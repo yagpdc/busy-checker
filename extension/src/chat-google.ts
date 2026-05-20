@@ -155,23 +155,21 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       } else {
         statusText.textContent = "em reunião";
       }
-    } else if (facts.online) {
+    } else {
       root.dataset.status = "available";
       statusText.textContent = "disponível agora";
-    } else {
-      root.dataset.status = "offline";
-      statusText.textContent = "offline";
     }
 
     if (!facts.suggestedSlot) return;
 
     // === Slot navigation state ===
-    // We start with the first slot from /query; up/down arrows walk through
-    // a locally-cached list, fetching forward from /slots/next on demand.
+    // We start with the first slot from /query; arrows walk a locally-cached
+    // list, fetching forward from /slots/next on demand.
     const slots: Slot[] = [facts.suggestedSlot];
     let cursor = 0;
     let currentSlot = slots[cursor];
     let selectedDur = 30;
+    let noMoreSlots = false;
     const prevBtn = $<HTMLButtonElement>("#bc-slot-prev");
     const nextBtn = $<HTMLButtonElement>("#bc-slot-next");
 
@@ -182,11 +180,14 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       const gapMin = Math.floor((end.getTime() - start.getTime()) / 60000);
 
       slotTime.textContent = formatSlot(slot);
-      slotHint.textContent = `livre por ${
+      const durText =
         gapMin >= 60
           ? `${Math.floor(gapMin / 60)}h${gapMin % 60 ? ` ${gapMin % 60}min` : ""}`
-          : `${gapMin}min`
-      } (até ${formatTime(end)})`;
+          : `${gapMin}min`;
+      const baseHint = `livre por ${durText} (até ${formatTime(end)})`;
+      const atEnd = cursor === slots.length - 1;
+      slotHint.textContent =
+        atEnd && noMoreSlots ? `${baseHint} · sem mais janelas` : baseHint;
 
       // Rebuild duration chips for the new gap. Keep the previous selection
       // if it still fits, else fall back to 30 or the first option.
@@ -212,8 +213,14 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         durRow.appendChild(btn);
       });
 
-      // Up arrow enabled iff we have a slot before this one.
       prevBtn.disabled = cursor === 0;
+      if (atEnd && noMoreSlots) {
+        nextBtn.disabled = true;
+        nextBtn.textContent = "—";
+      } else {
+        nextBtn.disabled = false;
+        nextBtn.textContent = "▼";
+      }
     };
 
     prevBtn.addEventListener("click", () => {
@@ -223,15 +230,16 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     });
 
     nextBtn.addEventListener("click", async () => {
-      // Already have the next one cached → just advance.
+      // Move within cached slots first.
       if (cursor < slots.length - 1) {
         cursor++;
         renderSlot(slots[cursor]);
         return;
       }
-      // Otherwise fetch the next slot after the current one's end.
+      if (noMoreSlots) return;
+
+      // Need to fetch.
       nextBtn.disabled = true;
-      const prevText = nextBtn.textContent;
       nextBtn.textContent = "…";
       try {
         const res = await chrome.runtime.sendMessage({
@@ -242,20 +250,17 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         if (!res?.ok) throw new Error(res?.error ?? "unknown");
         const slot = (res.data as { slot: Slot | null }).slot;
         if (!slot) {
-          // No more slots in the look-ahead window.
-          nextBtn.textContent = "—";
-          slotHint.textContent =
-            (slotHint.textContent ?? "") + " · sem mais janelas livres";
+          noMoreSlots = true;
+          renderSlot(currentSlot); // updates button to "—" and hint
           return;
         }
         slots.push(slot);
         cursor++;
-        renderSlot(slot);
+        renderSlot(slot); // re-enables and shows "▼" again
       } catch (err) {
         console.error("[busy-checker] nextSlot failed", err);
         nextBtn.disabled = false;
-      } finally {
-        nextBtn.textContent = prevText ?? "▼";
+        nextBtn.textContent = "▼";
       }
     });
 

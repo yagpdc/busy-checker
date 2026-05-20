@@ -113,14 +113,7 @@ export function templateStatusReply(facts: StatusFacts): string {
     }
     return `${facts.targetEmail} ${phrase} até ${ends}.${suggestion}`;
   }
-  if (facts.online) return `${facts.targetEmail} está disponível agora.`;
-  if (facts.lastActivityAt) {
-    const ago = Math.floor(
-      (Date.now() - facts.lastActivityAt.getTime()) / 60000,
-    );
-    return `${facts.targetEmail} sem atividade no navegador há ~${ago} min.${suggestion}`;
-  }
-  return `${facts.targetEmail} sem reunião agora, mas sem sinal de presença (talvez não tenha a extensão instalada).${suggestion}`;
+  return `${facts.targetEmail} está disponível agora.`;
 }
 
 // formatStatusReply was removed intentionally. Replies must come from

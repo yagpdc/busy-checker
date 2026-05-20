@@ -25,7 +25,12 @@ router.post("/next", requireSession, async (req, res) => {
     const slot = await nextFreeSlot(
       asker,
       parse.data.targetEmail,
-      { minDurationMin: parse.data.minDurationMin ?? 30 },
+      {
+        minDurationMin: parse.data.minDurationMin ?? 30,
+        // Larger horizon than the default /query: navigation should keep
+        // surfacing slots for a couple of work weeks.
+        lookAheadDays: 14,
+      },
       now,
     );
     res.json({

@@ -79,9 +79,9 @@ router.post("/", requireSession, async (req, res) => {
     }),
   ]);
 
-  // Only bother finding the next slot when "now" isn't a good answer.
-  const needsSlot = meeting.busy || !presence.online;
-  const suggestedSlot = needsSlot
+  // Only compute a suggested slot when the person is actively in a meeting/OOO.
+  // If they're free right now, there's nothing to suggest.
+  const suggestedSlot = meeting.busy
     ? await nextFreeSlot(asker, targetEmail).catch((err) => {
         console.error("freebusy lookup failed", err);
         return null;
