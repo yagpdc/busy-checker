@@ -66,8 +66,10 @@ function removeWidget(): void {
 function openWidget(name: string): void {
   const host = document.createElement("div");
   host.id = WIDGET_ID;
+  // ORDER MATTERS: `all:initial` must come FIRST so it doesn't reset the
+  // positioning declarations that follow it.
   host.style.cssText =
-    "position:fixed;bottom:24px;right:24px;z-index:2147483647;all:initial;";
+    "all:initial;position:fixed!important;bottom:24px!important;right:24px!important;z-index:2147483647!important;";
   const shadow = host.attachShadow({ mode: "open" });
   shadow.innerHTML = WIDGET_HTML;
   // Attach to documentElement (<html>) — survives most body re-renders.
