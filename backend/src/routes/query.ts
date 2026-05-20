@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireSession } from "../middleware/session.js";
 import { clientForUser } from "../services/google.js";
-import { currentMeeting } from "../services/calendar.js";
+import { currentMeeting, nextFreeSlot } from "../services/calendar.js";
 import { emailForNameHint, presenceForEmail } from "../services/presence.js";
 import {
   formatStatusReply,
@@ -71,11 +71,21 @@ router.post("/", requireSession, async (req, res) => {
     }),
   ]);
 
+  // Only bother finding the next slot when "now" isn't a good answer.
+  const needsSlot = meeting.busy || !presence.online;
+  const suggestedSlot = needsSlot
+    ? await nextFreeSlot(asker, targetEmail).catch((err) => {
+        console.error("freebusy lookup failed", err);
+        return null;
+      })
+    : null;
+
   const facts = {
     targetEmail,
     online: presence.online,
     lastActivityAt: presence.lastActivityAt,
     meeting,
+    suggestedSlot,
   };
 
   const reply = openaiEnabled
@@ -90,6 +100,12 @@ router.post("/", requireSession, async (req, res) => {
       meeting: facts.meeting.busy
         ? { ...facts.meeting, endsAt: facts.meeting.endsAt.toISOString() }
         : facts.meeting,
+      suggestedSlot: facts.suggestedSlot
+        ? {
+            start: facts.suggestedSlot.start.toISOString(),
+            end: facts.suggestedSlot.end.toISOString(),
+          }
+        : null,
     },
   });
 });

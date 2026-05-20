@@ -72,3 +72,94 @@ export async function currentMeeting(
   if (!active) return { busy: false };
   return { busy: true, title: null, endsAt: new Date(active.end!) };
 }
+
+/**
+ * Finds the next gap of `minDurationMin` minutes on `targetEmail`'s calendar
+ * within working hours, skipping weekends. TZ defaults to São Paulo (UTC-3).
+ */
+export async function nextFreeSlot(
+  asker: OAuth2Client,
+  targetEmail: string,
+  options: {
+    minDurationMin?: number;
+    lookAheadDays?: number;
+    workStartHour?: number;
+    workEndHour?: number;
+    tzOffsetHours?: number;
+  } = {},
+  now: Date = new Date(),
+): Promise<{ start: Date; end: Date } | null> {
+  const minDurMs = (options.minDurationMin ?? 30) * 60 * 1000;
+  const lookAheadDays = options.lookAheadDays ?? 5;
+  const workStart = options.workStartHour ?? 9;
+  const workEnd = options.workEndHour ?? 18;
+  const tz = options.tzOffsetHours ?? -3;
+
+  const calendar = google.calendar({ version: "v3", auth: asker });
+  const timeMin = now.toISOString();
+  const timeMax = new Date(
+    now.getTime() + lookAheadDays * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const fb = await calendar.freebusy.query({
+    requestBody: { timeMin, timeMax, items: [{ id: targetEmail }] },
+  });
+
+  const busy = (fb.data.calendars?.[targetEmail]?.busy ?? [])
+    .filter((b): b is { start: string; end: string } => !!b.start && !!b.end)
+    .map((b) => ({
+      start: new Date(b.start).getTime(),
+      end: new Date(b.end).getTime(),
+    }))
+    .sort((a, b) => a.start - b.start);
+
+  // Build working windows in target TZ for the next N days, skipping weekends.
+  const earliest = now.getTime() + 5 * 60 * 1000; // 5min buffer from now
+  for (let i = 0; i < lookAheadDays; i++) {
+    const dayUtc = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
+    // Shift into target TZ so getUTC* returns target-local components.
+    const local = new Date(dayUtc.getTime() + tz * 60 * 60 * 1000);
+    const dow = local.getUTCDay();
+    if (dow === 0 || dow === 6) continue;
+
+    const winStart = Date.UTC(
+      local.getUTCFullYear(),
+      local.getUTCMonth(),
+      local.getUTCDate(),
+      workStart - tz,
+      0,
+      0,
+    );
+    const winEnd = Date.UTC(
+      local.getUTCFullYear(),
+      local.getUTCMonth(),
+      local.getUTCDate(),
+      workEnd - tz,
+      0,
+      0,
+    );
+
+    let pointer = Math.max(winStart, earliest);
+    if (pointer >= winEnd) continue;
+
+    const overlapping = busy.filter((b) => b.end > pointer && b.start < winEnd);
+    for (const b of overlapping) {
+      if (b.start - pointer >= minDurMs) {
+        return {
+          start: new Date(pointer),
+          end: new Date(pointer + minDurMs),
+        };
+      }
+      pointer = Math.max(pointer, b.end);
+      if (pointer >= winEnd) break;
+    }
+    if (winEnd - pointer >= minDurMs) {
+      return {
+        start: new Date(pointer),
+        end: new Date(pointer + minDurMs),
+      };
+    }
+  }
+
+  return null;
+}

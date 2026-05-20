@@ -59,27 +59,54 @@ export type StatusFacts = {
   meeting:
     | { busy: false }
     | { busy: true; title: string | null; endsAt: Date };
+  suggestedSlot: { start: Date; end: Date } | null;
 };
 
+function formatSlot(slot: { start: Date; end: Date }, now: Date): string {
+  const tz = "America/Sao_Paulo";
+  const sameDay =
+    slot.start.toLocaleDateString("pt-BR", { timeZone: tz }) ===
+    now.toLocaleDateString("pt-BR", { timeZone: tz });
+  const time = slot.start.toLocaleTimeString("pt-BR", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (sameDay) return `hoje às ${time}`;
+  const day = slot.start.toLocaleDateString("pt-BR", {
+    timeZone: tz,
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  });
+  return `${day} às ${time}`;
+}
+
 export function templateStatusReply(facts: StatusFacts): string {
+  const now = new Date();
+  const suggestion = facts.suggestedSlot
+    ? ` Próxima janela livre: ${formatSlot(facts.suggestedSlot, now)}.`
+    : "";
+
   if (facts.meeting.busy) {
     const ends = facts.meeting.endsAt.toLocaleTimeString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
       hour: "2-digit",
       minute: "2-digit",
     });
     const title = facts.meeting.title
       ? ` em "${facts.meeting.title}"`
       : " em reunião";
-    return `${facts.targetEmail} está${title} até ${ends}.`;
+    return `${facts.targetEmail} está${title} até ${ends}.${suggestion}`;
   }
   if (facts.online) return `${facts.targetEmail} está disponível agora.`;
   if (facts.lastActivityAt) {
     const ago = Math.floor(
       (Date.now() - facts.lastActivityAt.getTime()) / 60000,
     );
-    return `${facts.targetEmail} sem atividade no navegador há ~${ago} min.`;
+    return `${facts.targetEmail} sem atividade no navegador há ~${ago} min.${suggestion}`;
   }
-  return `${facts.targetEmail} sem reunião agora, mas sem sinal de presença (talvez não tenha a extensão instalada).`;
+  return `${facts.targetEmail} sem reunião agora, mas sem sinal de presença (talvez não tenha a extensão instalada).${suggestion}`;
 }
 
 export async function formatStatusReply(
