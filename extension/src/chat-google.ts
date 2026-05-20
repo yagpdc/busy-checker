@@ -10,11 +10,9 @@ let lastKey: string | null = null;
 
 function currentConversationName(): string | null {
   // Observed title formats:
-  //   "<Name> - Google Chat"
-  //   "<Name> - Chat"
-  //   "(3) <Name> - Chat"
-  //   "Google Chat" / "Chat" (nothing open)
-  // \p{Pd} = any Unicode dash (hyphen, en-dash, em-dash, etc).
+  //   "<Name> - Google Chat" | "<Name> - Chat" | "(3) <Name> - Chat"
+  //   "Google Chat" | "Chat" (nothing open)
+  // \p{Pd} matches any Unicode dash.
   const title = document.title;
   if (!title) return null;
   const stripped = title.replace(/^\(\d+\)\s*/, "");
@@ -52,7 +50,6 @@ function removeWidget(): void {
 function openWidget(name: string): void {
   const host = document.createElement("div");
   host.id = WIDGET_ID;
-  // ORDER MATTERS: all:initial first, then layer positioning on top.
   host.style.cssText =
     "all:initial;position:fixed!important;bottom:24px!important;right:24px!important;z-index:2147483647!important;";
   const shadow = host.attachShadow({ mode: "open" });
@@ -76,6 +73,14 @@ type Facts = {
   suggestedSlot: Slot | null;
 };
 
+function formatTime(d: Date): string {
+  return d.toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatSlot(slot: Slot): string {
   const start = new Date(slot.start);
   const now = new Date();
@@ -83,21 +88,18 @@ function formatSlot(slot: Slot): string {
   const sameDay =
     start.toLocaleDateString("pt-BR", { timeZone: tz }) ===
     now.toLocaleDateString("pt-BR", { timeZone: tz });
-  const time = start.toLocaleTimeString("pt-BR", {
-    timeZone: tz,
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  if (sameDay) return `hoje às ${time}`;
+  if (sameDay) return `hoje às ${formatTime(start)}`;
   return (
     start.toLocaleDateString("pt-BR", {
       timeZone: tz,
       weekday: "short",
       day: "2-digit",
       month: "2-digit",
-    }) + ` às ${time}`
+    }) + ` às ${formatTime(start)}`
   );
 }
+
+const DURATION_OPTIONS_MIN = [15, 30, 45, 60, 90, 120];
 
 async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
   const $ = <T extends Element = HTMLElement>(sel: string) =>
@@ -107,7 +109,13 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
   const statusText = $("#bc-status-text") as HTMLElement;
   const slotEl = $("#bc-slot") as HTMLElement;
   const slotTime = $("#bc-slot-time") as HTMLElement;
+  const slotHint = $("#bc-slot-hint") as HTMLElement;
   const scheduleBtn = $<HTMLButtonElement>("#bc-schedule");
+  const form = $("#bc-form") as HTMLElement;
+  const titleInput = $<HTMLInputElement>("#bc-title");
+  const durRow = $("#bc-dur-row") as HTMLElement;
+  const confirmBtn = $<HTMLButtonElement>("#bc-confirm");
+  const cancelBtn = $<HTMLButtonElement>("#bc-cancel");
   const success = $("#bc-success") as HTMLElement;
 
   try {
@@ -142,55 +150,113 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       statusText.textContent = "offline";
     }
 
-    if (facts.suggestedSlot) {
-      slotEl.hidden = false;
-      slotTime.textContent = formatSlot(facts.suggestedSlot);
-      scheduleBtn.hidden = false;
-      scheduleBtn.addEventListener("click", async () => {
-        scheduleBtn.disabled = true;
-        scheduleBtn.textContent = "agendando…";
-        try {
-          const schedRes = await chrome.runtime.sendMessage({
-            type: "schedule",
-            targetEmail: facts.targetEmail,
-            start: facts.suggestedSlot!.start,
-            end: facts.suggestedSlot!.end,
-            title: `Conversa rápida com ${name}`,
-          });
-          if (!schedRes?.ok) throw new Error(schedRes?.error ?? "unknown");
-          const { htmlLink, meetLink } = schedRes.data as {
-            htmlLink: string;
-            meetLink: string | null;
-          };
-          scheduleBtn.hidden = true;
-          slotEl.hidden = true;
-          success.hidden = false;
-          const parts: string[] = ["✅ Agendado!"];
-          if (meetLink)
-            parts.push(`<a href="${meetLink}" target="_blank">abrir Meet</a>`);
-          if (htmlLink)
-            parts.push(
-              `<a href="${htmlLink}" target="_blank">ver no Calendar</a>`,
-            );
-          success.innerHTML = parts.join(" · ");
-        } catch (err) {
-          const msg = (err as Error).message;
-          scheduleBtn.disabled = false;
-          scheduleBtn.textContent = "📅 Tentar de novo";
-          // Surface the error inline so the user doesn't need DevTools.
-          success.hidden = false;
-          success.style.cssText =
-            "background:#fef2f2!important;color:#991b1b!important;";
-          const hint = /insufficient_scope|Insufficient Permission|403/i.test(
-            msg,
-          )
-            ? " Sair/Entrar de novo na extensão pra reautorizar o escopo de Calendar."
-            : "";
-          success.textContent = `❌ ${msg}.${hint}`;
-          console.error("[busy-checker] schedule failed", err);
-        }
+    if (!facts.suggestedSlot) return;
+
+    const slot = facts.suggestedSlot;
+    const slotStart = new Date(slot.start);
+    const slotEnd = new Date(slot.end);
+    const gapMin = Math.floor((slotEnd.getTime() - slotStart.getTime()) / 60000);
+
+    slotEl.hidden = false;
+    slotTime.textContent = formatSlot(slot);
+    slotHint.textContent = `livre por ${
+      gapMin >= 60
+        ? `${Math.floor(gapMin / 60)}h${gapMin % 60 ? ` ${gapMin % 60}min` : ""}`
+        : `${gapMin}min`
+    } (até ${formatTime(slotEnd)})`;
+    scheduleBtn.hidden = false;
+
+    // Pre-populate the title input with a sensible default.
+    titleInput.value = `Conversa com ${name}`;
+
+    // Build duration buttons constrained to what fits in the gap.
+    const validDurations = DURATION_OPTIONS_MIN.filter((m) => m <= gapMin);
+    if (validDurations.length === 0) validDurations.push(gapMin); // tiny gap
+    durRow.innerHTML = "";
+    let selectedDur = validDurations.includes(30)
+      ? 30
+      : validDurations[0];
+    validDurations.forEach((m) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "bc-dur";
+      btn.dataset.min = String(m);
+      btn.textContent = m >= 60 ? `${m / 60}h` : `${m}m`;
+      if (m === selectedDur) btn.dataset.selected = "true";
+      btn.addEventListener("click", () => {
+        durRow
+          .querySelectorAll(".bc-dur")
+          .forEach((b) => delete (b as HTMLElement).dataset.selected);
+        btn.dataset.selected = "true";
+        selectedDur = m;
       });
-    }
+      durRow.appendChild(btn);
+    });
+
+    scheduleBtn.addEventListener("click", () => {
+      scheduleBtn.hidden = true;
+      form.hidden = false;
+      titleInput.focus();
+      titleInput.select();
+    });
+
+    cancelBtn.addEventListener("click", () => {
+      form.hidden = true;
+      scheduleBtn.hidden = false;
+      success.hidden = true;
+      success.removeAttribute("style");
+    });
+
+    confirmBtn.addEventListener("click", async () => {
+      const title = titleInput.value.trim() || `Conversa com ${name}`;
+      const start = slotStart.toISOString();
+      const end = new Date(
+        slotStart.getTime() + selectedDur * 60000,
+      ).toISOString();
+
+      confirmBtn.disabled = true;
+      cancelBtn.disabled = true;
+      confirmBtn.textContent = "agendando…";
+      success.hidden = true;
+      success.removeAttribute("style");
+
+      try {
+        const schedRes = await chrome.runtime.sendMessage({
+          type: "schedule",
+          targetEmail: facts.targetEmail,
+          start,
+          end,
+          title,
+        });
+        if (!schedRes?.ok) throw new Error(schedRes?.error ?? "unknown");
+        const { htmlLink, meetLink } = schedRes.data as {
+          htmlLink: string;
+          meetLink: string | null;
+        };
+        form.hidden = true;
+        slotEl.hidden = true;
+        success.hidden = false;
+        const parts: string[] = [`✅ "${title}" agendada!`];
+        if (meetLink)
+          parts.push(`<a href="${meetLink}" target="_blank">abrir Meet</a>`);
+        if (htmlLink)
+          parts.push(`<a href="${htmlLink}" target="_blank">ver evento</a>`);
+        success.innerHTML = parts.join(" · ");
+      } catch (err) {
+        const msg = (err as Error).message;
+        confirmBtn.disabled = false;
+        cancelBtn.disabled = false;
+        confirmBtn.textContent = "Confirmar";
+        success.hidden = false;
+        success.style.cssText =
+          "background:#fef2f2!important;color:#991b1b!important;";
+        const hint = /insufficient_scope|Insufficient Permission|403/i.test(msg)
+          ? " Saia e entre de novo na extensão pra reautorizar."
+          : "";
+        success.textContent = `❌ ${msg}.${hint}`;
+        console.error("[busy-checker] schedule failed", err);
+      }
+    });
   } catch (err) {
     const msg = (err as Error).message;
     if (msg.includes("Extension context invalidated")) return;
@@ -339,6 +405,11 @@ const WIDGET_HTML = `
     color: #78350f;
     margin-top: 2px;
   }
+  #bc-slot-hint {
+    font-size: 11px;
+    color: #92400e;
+    margin-top: 2px;
+  }
 
   #bc-schedule {
     width: 100%;
@@ -356,11 +427,102 @@ const WIDGET_HTML = `
   }
   #bc-schedule:hover  { background: #4338ca; }
   #bc-schedule:active { transform: translateY(1px); }
-  #bc-schedule:disabled {
+
+  #bc-form {
+    margin-top: 12px;
+    padding: 12px;
+    background: rgba(79, 70, 229, 0.04);
+    border: 1px solid rgba(79, 70, 229, 0.15);
+    border-radius: 10px;
+    animation: bc-fade-in 0.2s ease-out;
+  }
+  @keyframes bc-fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  #bc-form label {
+    display: block;
+    font-size: 10px;
+    color: #4338ca;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  #bc-title {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid rgba(0,0,0,0.12);
+    border-radius: 8px;
+    font: inherit;
+    font-size: 13px;
+    background: #fff;
+  }
+  #bc-title:focus {
+    outline: 0;
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  }
+  #bc-dur-label { margin-top: 10px; }
+  #bc-dur-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .bc-dur {
+    padding: 6px 10px;
+    border: 1px solid rgba(0,0,0,0.12);
+    border-radius: 999px;
+    background: #fff;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: #4338ca;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .bc-dur:hover { background: #eef2ff; }
+  .bc-dur[data-selected="true"] {
+    background: #4f46e5;
+    color: #fff;
+    border-color: #4f46e5;
+  }
+
+  #bc-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 12px;
+  }
+  #bc-confirm {
+    flex: 1;
+    padding: 9px 12px;
+    background: #4f46e5;
+    color: #fff;
+    border: 0;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #bc-confirm:hover { background: #4338ca; }
+  #bc-confirm:disabled {
     background: #c7d2fe;
     color: #4338ca;
     cursor: wait;
   }
+  #bc-cancel {
+    padding: 9px 12px;
+    background: #fff;
+    color: #57606a;
+    border: 1px solid rgba(0,0,0,0.12);
+    border-radius: 8px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  #bc-cancel:hover { background: #f6f8fa; }
+  #bc-cancel:disabled { cursor: wait; opacity: 0.6; }
 
   #bc-success {
     margin-top: 12px;
@@ -373,9 +535,7 @@ const WIDGET_HTML = `
   }
   #bc-success a { color: #065f46; font-weight: 600; text-decoration: underline; }
 
-  #bc-root[data-state="error"] #bc-body {
-    background: #fef2f2;
-  }
+  #bc-root[data-state="error"] #bc-body { background: #fef2f2; }
 </style>
 <div id="bc-root" data-state="thinking" data-status="unknown">
   <div id="bc-header">
@@ -395,8 +555,19 @@ const WIDGET_HTML = `
     <div id="bc-slot" hidden>
       <div id="bc-slot-label">Próxima janela livre</div>
       <div id="bc-slot-time"></div>
+      <div id="bc-slot-hint"></div>
     </div>
-    <button id="bc-schedule" hidden type="button">📅 Agendar call (cria Meet)</button>
+    <button id="bc-schedule" hidden type="button">📅 Agendar nesta janela</button>
+    <div id="bc-form" hidden>
+      <label for="bc-title">Nome da reunião</label>
+      <input id="bc-title" type="text" maxlength="120" />
+      <label id="bc-dur-label" for="bc-dur-row">Duração</label>
+      <div id="bc-dur-row"></div>
+      <div id="bc-actions">
+        <button id="bc-confirm" type="button">Confirmar</button>
+        <button id="bc-cancel" type="button">Cancelar</button>
+      </div>
+    </div>
     <div id="bc-success" hidden></div>
   </div>
 </div>

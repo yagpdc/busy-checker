@@ -145,9 +145,11 @@ export async function nextFreeSlot(
     const overlapping = busy.filter((b) => b.end > pointer && b.start < winEnd);
     for (const b of overlapping) {
       if (b.start - pointer >= minDurMs) {
+        // end = full extent of the free gap (capped at the next busy event)
+        // so the UI can offer durations up to that.
         return {
           start: new Date(pointer),
-          end: new Date(pointer + minDurMs),
+          end: new Date(b.start),
         };
       }
       pointer = Math.max(pointer, b.end);
@@ -156,7 +158,7 @@ export async function nextFreeSlot(
     if (winEnd - pointer >= minDurMs) {
       return {
         start: new Date(pointer),
-        end: new Date(pointer + minDurMs),
+        end: new Date(winEnd),
       };
     }
   }
