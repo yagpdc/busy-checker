@@ -78,6 +78,8 @@ type Facts = {
         endsAt: string;
       };
   suggestedSlot: Slot | null;
+  outsideWorkingHours: boolean;
+  workingHours: { start: number; end: number };
 };
 
 function formatTime(d: Date): string {
@@ -155,6 +157,9 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       } else {
         statusText.textContent = "em reunião";
       }
+    } else if (facts.outsideWorkingHours) {
+      root.dataset.status = "offhours";
+      statusText.textContent = "fora do horário";
     } else {
       root.dataset.status = "available";
       statusText.textContent = "disponível agora";
@@ -433,6 +438,10 @@ const WIDGET_HTML = `
   #bc-root[data-status="busy"] #bc-status-dot {
     background: #ef4444;
     box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+  }
+  #bc-root[data-status="offhours"] #bc-status-dot {
+    background: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
   }
   #bc-status-text {
     font-size: 11px;

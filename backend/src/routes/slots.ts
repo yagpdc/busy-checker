@@ -11,6 +11,8 @@ const body = z.object({
   // ISO timestamp — search starts at this moment. Defaults to now.
   after: z.string().datetime().optional(),
   minDurationMin: z.number().int().min(5).max(480).optional(),
+  workStartHour: z.number().int().min(0).max(23).optional(),
+  workEndHour: z.number().int().min(1).max(24).optional(),
 });
 
 router.post("/next", requireSession, async (req, res) => {
@@ -27,9 +29,9 @@ router.post("/next", requireSession, async (req, res) => {
       parse.data.targetEmail,
       {
         minDurationMin: parse.data.minDurationMin ?? 30,
-        // Larger horizon than the default /query: navigation should keep
-        // surfacing slots for a couple of work weeks.
         lookAheadDays: 14,
+        workStartHour: parse.data.workStartHour ?? 9,
+        workEndHour: parse.data.workEndHour ?? 18,
       },
       now,
     );

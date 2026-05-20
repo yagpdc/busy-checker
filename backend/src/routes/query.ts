@@ -6,7 +6,10 @@ import { currentMeeting, nextFreeSlot } from "../services/calendar.js";
 import { findEmailInDirectory } from "../services/directory.js";
 import { emailForNameHint, presenceForEmail } from "../services/presence.js";
 import { openaiEnabled, parseQuestion } from "../services/openai.js";
-import { templateStatusReply } from "../services/replies.js";
+import {
+  isOutsideWorkingHours,
+  templateStatusReply,
+} from "../services/replies.js";
 
 const router = Router();
 
@@ -15,6 +18,10 @@ const body = z.object({
   question: z.string().min(1).max(500).optional(),
   targetEmail: z.string().email().optional(),
   targetName: z.string().min(1).max(120).optional(),
+  // Asker-configured working window. Used both to flag "outside hours"
+  // status and to constrain suggested slots.
+  workStartHour: z.number().int().min(0).max(23).optional(),
+  workEndHour: z.number().int().min(1).max(24).optional(),
 });
 
 router.post("/", requireSession, async (req, res) => {
@@ -76,14 +83,26 @@ router.post("/", requireSession, async (req, res) => {
     }),
   ]);
 
-  // Only compute a suggested slot when the person is actively in a meeting/OOO.
-  // If they're free right now, there's nothing to suggest.
-  const suggestedSlot = meeting.busy
-    ? await nextFreeSlot(asker, targetEmail).catch((err) => {
-        console.error("freebusy lookup failed", err);
-        return null;
-      })
-    : null;
+  const workStart = parse.data.workStartHour ?? 9;
+  const workEnd = parse.data.workEndHour ?? 18;
+  const outsideWorkingHours = isOutsideWorkingHours(
+    new Date(),
+    workStart,
+    workEnd,
+  );
+
+  // Suggest a slot whenever the answer is "not available right now":
+  // either actively in a meeting, or outside the asker's working hours.
+  const suggestedSlot =
+    meeting.busy || outsideWorkingHours
+      ? await nextFreeSlot(asker, targetEmail, {
+          workStartHour: workStart,
+          workEndHour: workEnd,
+        }).catch((err) => {
+          console.error("freebusy lookup failed", err);
+          return null;
+        })
+      : null;
 
   const facts = {
     targetEmail,
@@ -91,6 +110,8 @@ router.post("/", requireSession, async (req, res) => {
     lastActivityAt: presence.lastActivityAt,
     meeting,
     suggestedSlot,
+    outsideWorkingHours,
+    workingHours: { start: workStart, end: workEnd },
   };
 
   // Reply text is always built from the template — it's deterministic and
@@ -112,6 +133,8 @@ router.post("/", requireSession, async (req, res) => {
             end: facts.suggestedSlot.end.toISOString(),
           }
         : null,
+      outsideWorkingHours: facts.outsideWorkingHours,
+      workingHours: facts.workingHours,
     },
   });
 });

@@ -1,6 +1,7 @@
 /// <reference types="chrome" />
 import { apiFetch, clearSession, setSession } from "./api.js";
 import { GOOGLE_CLIENT_ID } from "./config.js";
+import { getSettings } from "./settings.js";
 
 // === OAuth flow ===
 const SCOPES = [
@@ -99,15 +100,19 @@ chrome.runtime.onMessage.addListener(
         case "signOut":
           await clearSession();
           return { ok: true };
-        case "query":
+        case "query": {
+          const s = await getSettings();
           return await apiFetch<{ reply: string; facts: unknown }>("/query", {
             method: "POST",
             body: JSON.stringify({
               question: msg.question,
               targetEmail: msg.targetEmail,
               targetName: msg.targetName,
+              workStartHour: s.workStartHour,
+              workEndHour: s.workEndHour,
             }),
           });
+        }
         case "schedule":
           return await apiFetch<{
             htmlLink: string;
@@ -121,7 +126,8 @@ chrome.runtime.onMessage.addListener(
               title: msg.title,
             }),
           });
-        case "nextSlot":
+        case "nextSlot": {
+          const s = await getSettings();
           return await apiFetch<{
             slot: { start: string; end: string } | null;
           }>("/slots/next", {
@@ -129,8 +135,11 @@ chrome.runtime.onMessage.addListener(
             body: JSON.stringify({
               targetEmail: msg.targetEmail,
               after: msg.after,
+              workStartHour: s.workStartHour,
+              workEndHour: s.workEndHour,
             }),
           });
+        }
       }
     })()
       .then((r) => sendResponse({ ok: true, data: r }))

@@ -15,7 +15,41 @@ export type StatusFacts = {
         endsAt: Date;
       };
   suggestedSlot: { start: Date; end: Date } | null;
+  outsideWorkingHours: boolean;
+  workingHours: { start: number; end: number };
 };
+
+/**
+ * Is `when` outside the configured working window in São Paulo time?
+ * Weekends count as outside.
+ */
+export function isOutsideWorkingHours(
+  when: Date,
+  workStartHour: number,
+  workEndHour: number,
+): boolean {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    weekday: "short",
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(when);
+  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
+  const hourStr = parts.find((p) => p.type === "hour")?.value ?? "0";
+  const hour = parseInt(hourStr === "24" ? "0" : hourStr, 10);
+  const dowMap: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+  const dow = dowMap[weekday] ?? -1;
+  if (dow === 0 || dow === 6) return true;
+  return hour < workStartHour || hour >= workEndHour;
+}
 
 function formatSlot(slot: { start: Date; end: Date }, now: Date): string {
   const tz = "America/Sao_Paulo";
@@ -63,5 +97,13 @@ export function templateStatusReply(facts: StatusFacts): string {
     }
     return `${facts.targetEmail} ${phrase} até ${ends}.${suggestion}`;
   }
+  if (facts.outsideWorkingHours) {
+    const { start, end } = facts.workingHours;
+    return `${facts.targetEmail} está fora do horário de trabalho (${pad(start)}h–${pad(end)}h).${suggestion}`;
+  }
   return `${facts.targetEmail} está disponível agora.`;
+}
+
+function pad(n: number): string {
+  return n.toString().padStart(2, "0");
 }

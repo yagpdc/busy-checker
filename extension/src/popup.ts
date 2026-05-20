@@ -1,4 +1,5 @@
 /// <reference types="chrome" />
+import { DEFAULT_SETTINGS, getSettings, setSettings } from "./settings.js";
 
 type BgResponse<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -88,3 +89,42 @@ $<HTMLButtonElement>("ask").addEventListener("click", async () => {
 });
 
 refreshUser();
+
+// === Settings ===
+async function loadSettings(): Promise<void> {
+  const s = await getSettings();
+  $<HTMLInputElement>("work-start").value = String(s.workStartHour);
+  $<HTMLInputElement>("work-end").value = String(s.workEndHour);
+}
+
+$<HTMLButtonElement>("save-settings").addEventListener("click", async () => {
+  const ws = parseInt($<HTMLInputElement>("work-start").value, 10);
+  const we = parseInt($<HTMLInputElement>("work-end").value, 10);
+  const msg = $<HTMLParagraphElement>("settings-msg");
+  msg.hidden = false;
+  if (
+    Number.isNaN(ws) ||
+    Number.isNaN(we) ||
+    ws < 0 ||
+    ws > 23 ||
+    we < 1 ||
+    we > 24 ||
+    ws >= we
+  ) {
+    msg.dataset.error = "true";
+    msg.textContent = "Início < fim, 0-24h.";
+    return;
+  }
+  delete msg.dataset.error;
+  await setSettings({ workStartHour: ws, workEndHour: we });
+  msg.textContent = `Salvo: ${ws}h–${we}h.`;
+});
+
+loadSettings().catch(() => {
+  $<HTMLInputElement>("work-start").value = String(
+    DEFAULT_SETTINGS.workStartHour,
+  );
+  $<HTMLInputElement>("work-end").value = String(
+    DEFAULT_SETTINGS.workEndHour,
+  );
+});

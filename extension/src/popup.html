@@ -33,6 +33,19 @@
       </section>
 
       <p id="error" hidden></p>
+
+      <details id="settings-section">
+        <summary>⚙ Horário de trabalho</summary>
+        <div class="time-row">
+          <label for="work-start">Das</label>
+          <input id="work-start" type="number" min="0" max="23" />
+          <label for="work-end">até</label>
+          <input id="work-end" type="number" min="1" max="24" />
+          <span>h</span>
+          <button id="save-settings" type="button">Salvar</button>
+        </div>
+        <p id="settings-msg" hidden></p>
+      </details>
     </main>
 
     <script type="module" src="popup.js"></script>
