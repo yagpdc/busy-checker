@@ -60,6 +60,11 @@ function openWidget(name: string): void {
     shadow.querySelector(sel) as T;
   ($("#bc-name") as HTMLElement).textContent = name;
   $<HTMLButtonElement>("#bc-close").addEventListener("click", removeWidget);
+  // Suppress event propagation so clicks inside the widget never trigger
+  // Chat's own handlers.
+  shadow
+    .querySelector("#bc-root")
+    ?.addEventListener("click", (e) => e.stopPropagation());
 
   void askBackend(name, shadow);
 }
@@ -224,7 +229,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         nextBtn.textContent = "—";
       } else {
         nextBtn.disabled = false;
-        nextBtn.textContent = "▼";
+        nextBtn.textContent = "↓";
       }
     };
 
@@ -265,7 +270,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       } catch (err) {
         console.error("[busy-checker] nextSlot failed", err);
         nextBtn.disabled = false;
-        nextBtn.textContent = "▼";
+        nextBtn.textContent = "↓";
       }
     });
 
@@ -317,11 +322,13 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         form.hidden = true;
         slotEl.hidden = true;
         success.hidden = false;
-        const parts: string[] = [`✅ "${title}" agendada!`];
+        const parts: string[] = [
+          `<strong>"${title}"</strong> agendada.`,
+        ];
         if (meetLink)
-          parts.push(`<a href="${meetLink}" target="_blank">abrir Meet</a>`);
+          parts.push(`<a href="${meetLink}" target="_blank">Abrir Meet</a>`);
         if (htmlLink)
-          parts.push(`<a href="${htmlLink}" target="_blank">ver evento</a>`);
+          parts.push(`<a href="${htmlLink}" target="_blank">Ver evento</a>`);
         success.innerHTML = parts.join(" · ");
       } catch (err) {
         const msg = (err as Error).message;
@@ -334,7 +341,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         const hint = /insufficient_scope|Insufficient Permission|403/i.test(msg)
           ? " Saia e entre de novo na extensão pra reautorizar."
           : "";
-        success.textContent = `❌ ${msg}.${hint}`;
+        success.textContent = `${msg}.${hint}`;
         console.error("[busy-checker] schedule failed", err);
       }
     });
@@ -353,54 +360,43 @@ const WIDGET_HTML = `
   * { box-sizing: border-box; }
 
   #bc-root {
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     width: 320px;
-    color: #1f2328;
-    background: linear-gradient(135deg, #ffffff 0%, #eef2ff 100%);
-    border: 1px solid rgba(0,0,0,0.08);
-    border-radius: 16px;
-    box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18);
+    color: #111827;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    box-shadow:
+      0 1px 2px rgba(0,0,0,0.04),
+      0 12px 32px rgba(15, 23, 42, 0.10);
     overflow: hidden;
-    animation: bc-slide-in 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: bc-fade-up 0.18s ease-out;
   }
-  @keyframes bc-slide-in {
-    from { opacity: 0; transform: translateY(16px) scale(0.96); }
-    to   { opacity: 1; transform: translateY(0)    scale(1); }
+  @keyframes bc-fade-up {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 
   #bc-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
-    padding: 14px;
-    background: rgba(79, 70, 229, 0.06);
-    border-bottom: 1px solid rgba(0,0,0,0.04);
-  }
-  #bc-creature {
-    font-size: 32px;
-    line-height: 1;
-    transform-origin: 50% 70%;
-    flex-shrink: 0;
-  }
-  #bc-root[data-state="thinking"] #bc-creature {
-    animation: bc-wobble 0.8s ease-in-out infinite;
-  }
-  @keyframes bc-wobble {
-    0%, 100% { transform: rotate(-14deg); }
-    50%      { transform: rotate(14deg); }
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid #f3f4f6;
   }
   #bc-header-text { flex: 1; min-width: 0; }
   #bc-label {
     font-size: 10px;
-    color: #6366f1;
+    color: #6b7280;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 700;
+    letter-spacing: 0.10em;
+    font-weight: 600;
   }
   #bc-name {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
-    margin-top: 2px;
+    color: #111827;
+    margin-top: 3px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -408,14 +404,14 @@ const WIDGET_HTML = `
   #bc-close {
     background: none;
     border: 0;
-    font-size: 18px;
-    color: #57606a;
+    color: #9ca3af;
     cursor: pointer;
     line-height: 1;
-    padding: 4px 8px;
-    border-radius: 8px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-size: 18px;
   }
-  #bc-close:hover { background: rgba(0,0,0,0.08); }
+  #bc-close:hover { background: #f3f4f6; color: #374151; }
 
   #bc-body { padding: 14px; }
 
@@ -426,34 +422,25 @@ const WIDGET_HTML = `
     margin-bottom: 8px;
   }
   #bc-status-dot {
-    width: 9px; height: 9px;
+    width: 7px; height: 7px;
     border-radius: 50%;
     background: #9ca3af;
-    box-shadow: 0 0 0 3px rgba(156, 163, 175, 0.18);
   }
-  #bc-root[data-status="available"] #bc-status-dot {
-    background: #22c55e;
-    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
-  }
-  #bc-root[data-status="busy"] #bc-status-dot {
-    background: #ef4444;
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
-  }
-  #bc-root[data-status="offhours"] #bc-status-dot {
-    background: #f59e0b;
-    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
-  }
+  #bc-root[data-status="available"] #bc-status-dot { background: #059669; }
+  #bc-root[data-status="busy"]      #bc-status-dot { background: #dc2626; }
+  #bc-root[data-status="offhours"]  #bc-status-dot { background: #d97706; }
   #bc-status-text {
-    font-size: 11px;
-    color: #57606a;
+    font-size: 10px;
+    color: #6b7280;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-weight: 700;
+    letter-spacing: 0.08em;
+    font-weight: 600;
   }
 
   #bc-reply {
-    font-size: 14px;
-    line-height: 1.45;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #374151;
     margin: 0;
   }
   #bc-root[data-state="thinking"] #bc-reply::after {
@@ -474,8 +461,9 @@ const WIDGET_HTML = `
   #bc-slot {
     margin-top: 12px;
     padding: 10px 12px;
-    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-    border-radius: 10px;
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
   }
   #bc-slot-head {
     display: flex;
@@ -484,95 +472,94 @@ const WIDGET_HTML = `
   }
   #bc-slot-label {
     font-size: 10px;
-    color: #92400e;
+    color: #6b7280;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 700;
+    letter-spacing: 0.10em;
+    font-weight: 600;
   }
-  #bc-slot-nav { display: flex; gap: 4px; }
+  #bc-slot-nav { display: flex; gap: 2px; }
   #bc-slot-nav button {
-    background: rgba(146, 64, 14, 0.12);
-    border: 0;
-    color: #78350f;
+    background: transparent;
+    border: 1px solid #e5e7eb;
+    color: #6b7280;
     width: 22px;
     height: 22px;
-    border-radius: 6px;
-    font-size: 12px;
+    border-radius: 5px;
+    font-size: 10px;
     line-height: 1;
     cursor: pointer;
     padding: 0;
-    transition: background 0.12s;
+    transition: all 0.12s;
   }
   #bc-slot-nav button:hover:not(:disabled) {
-    background: rgba(146, 64, 14, 0.22);
+    background: #f3f4f6;
+    color: #111827;
+    border-color: #d1d5db;
   }
   #bc-slot-nav button:disabled {
     opacity: 0.35;
     cursor: not-allowed;
   }
   #bc-slot-time {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
-    color: #78350f;
-    margin-top: 2px;
+    color: #111827;
+    margin-top: 6px;
+    font-variant-numeric: tabular-nums;
   }
   #bc-slot-hint {
     font-size: 11px;
-    color: #92400e;
+    color: #6b7280;
     margin-top: 2px;
+    font-variant-numeric: tabular-nums;
   }
 
   #bc-schedule {
     width: 100%;
     margin-top: 10px;
-    padding: 10px 12px;
-    background: #4f46e5;
-    color: #fff;
+    padding: 9px 12px;
+    background: #111827;
+    color: #ffffff;
     border: 0;
-    border-radius: 10px;
+    border-radius: 8px;
     font: inherit;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s, transform 0.05s;
+    transition: background 0.12s;
   }
-  #bc-schedule:hover  { background: #4338ca; }
-  #bc-schedule:active { transform: translateY(1px); }
+  #bc-schedule:hover  { background: #1f2937; }
 
   #bc-form {
     margin-top: 12px;
     padding: 12px;
-    background: rgba(79, 70, 229, 0.04);
-    border: 1px solid rgba(79, 70, 229, 0.15);
-    border-radius: 10px;
-    animation: bc-fade-in 0.2s ease-out;
-  }
-  @keyframes bc-fade-in {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: translateY(0); }
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
   }
   #bc-form label {
     display: block;
     font-size: 10px;
-    color: #4338ca;
+    color: #6b7280;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 700;
-    margin-bottom: 4px;
+    letter-spacing: 0.10em;
+    font-weight: 600;
+    margin-bottom: 6px;
   }
   #bc-title {
     width: 100%;
-    padding: 8px 10px;
-    border: 1px solid rgba(0,0,0,0.12);
-    border-radius: 8px;
+    padding: 7px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
     font: inherit;
     font-size: 13px;
-    background: #fff;
+    background: #ffffff;
+    color: #111827;
   }
   #bc-title:focus {
     outline: 0;
-    border-color: #4f46e5;
-    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    border-color: #111827;
+    box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.08);
   }
   #bc-dur-label { margin-top: 10px; }
   #bc-dur-row {
@@ -581,22 +568,23 @@ const WIDGET_HTML = `
     gap: 4px;
   }
   .bc-dur {
-    padding: 6px 10px;
-    border: 1px solid rgba(0,0,0,0.12);
-    border-radius: 999px;
-    background: #fff;
+    padding: 5px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #ffffff;
     font: inherit;
     font-size: 12px;
-    font-weight: 600;
-    color: #4338ca;
+    font-weight: 500;
+    color: #374151;
     cursor: pointer;
     transition: all 0.12s;
+    font-variant-numeric: tabular-nums;
   }
-  .bc-dur:hover { background: #eef2ff; }
+  .bc-dur:hover { background: #f3f4f6; }
   .bc-dur[data-selected="true"] {
-    background: #4f46e5;
-    color: #fff;
-    border-color: #4f46e5;
+    background: #111827;
+    color: #ffffff;
+    border-color: #111827;
   }
 
   #bc-actions {
@@ -606,51 +594,50 @@ const WIDGET_HTML = `
   }
   #bc-confirm {
     flex: 1;
-    padding: 9px 12px;
-    background: #4f46e5;
-    color: #fff;
+    padding: 8px 12px;
+    background: #111827;
+    color: #ffffff;
     border: 0;
-    border-radius: 8px;
+    border-radius: 6px;
     font: inherit;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
   }
-  #bc-confirm:hover { background: #4338ca; }
+  #bc-confirm:hover { background: #1f2937; }
   #bc-confirm:disabled {
-    background: #c7d2fe;
-    color: #4338ca;
+    background: #9ca3af;
     cursor: wait;
   }
   #bc-cancel {
-    padding: 9px 12px;
-    background: #fff;
-    color: #57606a;
-    border: 1px solid rgba(0,0,0,0.12);
-    border-radius: 8px;
+    padding: 8px 12px;
+    background: #ffffff;
+    color: #6b7280;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
     font: inherit;
     font-size: 13px;
     cursor: pointer;
   }
-  #bc-cancel:hover { background: #f6f8fa; }
+  #bc-cancel:hover { background: #f9fafb; color: #374151; }
   #bc-cancel:disabled { cursor: wait; opacity: 0.6; }
 
   #bc-success {
     margin-top: 12px;
     padding: 10px 12px;
-    background: #d1fae5;
-    border-radius: 10px;
-    color: #065f46;
-    font-size: 13px;
-    line-height: 1.5;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    color: #166534;
+    font-size: 12px;
+    line-height: 1.55;
   }
-  #bc-success a { color: #065f46; font-weight: 600; text-decoration: underline; }
+  #bc-success a { color: #166534; font-weight: 600; text-decoration: underline; }
 
   #bc-root[data-state="error"] #bc-body { background: #fef2f2; }
 </style>
 <div id="bc-root" data-state="thinking" data-status="unknown">
   <div id="bc-header">
-    <span id="bc-creature" aria-hidden="true">🐱</span>
     <div id="bc-header-text">
       <div id="bc-label">Busy Checker</div>
       <div id="bc-name"></div>
@@ -665,16 +652,16 @@ const WIDGET_HTML = `
     <p id="bc-reply">consultando agenda</p>
     <div id="bc-slot" hidden>
       <div id="bc-slot-head">
-        <div id="bc-slot-label">Próxima janela livre</div>
+        <div id="bc-slot-label">Próxima janela</div>
         <div id="bc-slot-nav">
-          <button id="bc-slot-prev" type="button" title="janela anterior" disabled>▲</button>
-          <button id="bc-slot-next" type="button" title="próxima janela">▼</button>
+          <button id="bc-slot-prev" type="button" title="janela anterior" disabled>↑</button>
+          <button id="bc-slot-next" type="button" title="próxima janela">↓</button>
         </div>
       </div>
       <div id="bc-slot-time"></div>
       <div id="bc-slot-hint"></div>
     </div>
-    <button id="bc-schedule" hidden type="button">📅 Agendar nesta janela</button>
+    <button id="bc-schedule" hidden type="button">Agendar nesta janela</button>
     <div id="bc-form" hidden>
       <label for="bc-title">Nome da reunião</label>
       <input id="bc-title" type="text" maxlength="120" />
