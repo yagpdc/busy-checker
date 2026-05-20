@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Busy Checker",
+  "version": "0.1.0",
+  "description": "Sabe se alguém está disponível agora juntando presença no navegador + Google Agenda.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1TSCtVSFdleKf1VHo32UpFs2b9QZqbqvdK33jAxRueSioF3fTMZSngcvJttkdmmOwi9cdvdZYr+Eu8TIhecQyTES/jR+a5lN4kRejxQlEUyBOFH3Ln72NCWgzaeGzWjIGZ0+1cXXLI9euSeb5oIFS0gZt5uib/aUejeSnhllKt/pPXauHmWgZbLbC2wJuCcKjep1G54E2Ijm2ZqrVBx6e7qMz8W3WOOxOCu5oq0lvdpQX90voyYtlQGup44VUXqt6pB76Zfbj8HgTxxaIw1X+TBSdoWTblTnyv0CkoHA4kU/SxdMhqVcOSMVqqravNIBv+m86LJUgUxndd636TZRMwIDAQAB",
+  "permissions": ["identity", "storage", "alarms"],
+  "host_permissions": ["http://localhost:8787/*", "<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Busy Checker"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://chat.google.com/*"],
+      "js": ["chat-google.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

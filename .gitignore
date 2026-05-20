@@ -1,0 +1,20 @@
+# Dependencies & build artifacts
+node_modules/
+dist/
+
+# Secrets — NEVER commit
+.env
+.env.local
+.env.*.local
+*.pem
+.extension-key.pem
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*

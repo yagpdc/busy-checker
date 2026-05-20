@@ -1,0 +1,14 @@
+{
+  "name": "busy-checker-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc && node copy-assets.mjs",
+    "watch": "tsc -w"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "typescript": "^5.7.2"
+  }
+}

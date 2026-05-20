@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Busy Checker</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Busy Checker</h1>
+      <div id="user-row">
+        <span id="user-email">não conectado</span>
+        <button id="sign-in" type="button">Entrar com Google</button>
+        <button id="sign-out" type="button" hidden>Sair</button>
+      </div>
+    </header>
+
+    <main>
+      <label for="question">Pergunta</label>
+      <textarea
+        id="question"
+        rows="3"
+        placeholder="Cola um email (ex: joao@driva.com.br) ou pergunte em texto livre se tiver OpenAI key."
+      ></textarea>
+      <button id="ask" type="button">Perguntar</button>
+
+      <section id="result" hidden>
+        <p id="reply"></p>
+        <details>
+          <summary>Detalhes</summary>
+          <pre id="facts"></pre>
+        </details>
+      </section>
+
+      <p id="error" hidden></p>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
