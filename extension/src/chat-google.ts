@@ -35,11 +35,17 @@ function currentConversationName(): string | null {
 function reactToState(): void {
   const name = currentConversationName();
   const key = name ? `${location.pathname}::${name}` : null;
-  if (key === lastKey) return;
-  lastKey = key;
+  const widgetExists = !!document.getElementById(WIDGET_ID);
 
+  // Skip only if the state didn't change AND the widget is where we expect.
+  // Google Chat aggressively re-renders body on DM switch and can yank our
+  // node out — when that happens we need to recreate even if state is same.
+  if (key === lastKey && (key === null || widgetExists)) return;
+
+  lastKey = key;
   removeWidget();
   if (name) {
+    console.debug("[busy-checker] creating widget for:", name);
     openWidget(name);
   }
 }
@@ -64,7 +70,9 @@ function openWidget(name: string): void {
     "position:fixed;bottom:24px;right:24px;z-index:2147483647;all:initial;";
   const shadow = host.attachShadow({ mode: "open" });
   shadow.innerHTML = WIDGET_HTML;
-  document.body.appendChild(host);
+  // Attach to documentElement (<html>) — survives most body re-renders.
+  // Falls back to body if for some reason html isn't writable.
+  (document.documentElement || document.body).appendChild(host);
 
   const $ = (sel: string) => shadow.querySelector(sel) as HTMLElement;
   ($("#bc-name") as HTMLElement).textContent = name;
