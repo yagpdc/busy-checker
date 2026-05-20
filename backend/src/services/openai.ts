@@ -1,3 +1,10 @@
+// THE ONLY file in the backend that talks to OpenAI.
+//
+// One single call site: `parseQuestion`. It's gated upstream in
+// routes/query.ts to fire only when the popup receives a free-form text
+// that isn't an email and isn't a plain name. The chat widget never
+// reaches this path (it sends targetName directly).
+
 import OpenAI from "openai";
 import { config } from "../config.js";
 
@@ -51,72 +58,3 @@ export async function parseQuestion(
     return { targetEmail: null, targetHint: null };
   }
 }
-
-export type StatusFacts = {
-  targetEmail: string;
-  online: boolean;
-  lastActivityAt: Date | null;
-  meeting:
-    | { busy: false }
-    | {
-        busy: true;
-        kind: "meeting" | "outOfOffice" | "focusTime";
-        title: string | null;
-        endsAt: Date;
-      };
-  suggestedSlot: { start: Date; end: Date } | null;
-};
-
-function formatSlot(slot: { start: Date; end: Date }, now: Date): string {
-  const tz = "America/Sao_Paulo";
-  const sameDay =
-    slot.start.toLocaleDateString("pt-BR", { timeZone: tz }) ===
-    now.toLocaleDateString("pt-BR", { timeZone: tz });
-  const time = slot.start.toLocaleTimeString("pt-BR", {
-    timeZone: tz,
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  if (sameDay) return `hoje às ${time}`;
-  const day = slot.start.toLocaleDateString("pt-BR", {
-    timeZone: tz,
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-  });
-  return `${day} às ${time}`;
-}
-
-export function templateStatusReply(facts: StatusFacts): string {
-  const now = new Date();
-  const suggestion = facts.suggestedSlot
-    ? ` Próxima janela livre: ${formatSlot(facts.suggestedSlot, now)}.`
-    : "";
-
-  if (facts.meeting.busy) {
-    const ends = facts.meeting.endsAt.toLocaleString("pt-BR", {
-      timeZone: "America/Sao_Paulo",
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    let phrase: string;
-    if (facts.meeting.kind === "outOfOffice") {
-      phrase = "está fora do escritório (Ausente)";
-    } else if (facts.meeting.kind === "focusTime") {
-      phrase = "está em foco";
-    } else if (facts.meeting.title) {
-      phrase = `está em "${facts.meeting.title}"`;
-    } else {
-      phrase = "está em reunião";
-    }
-    return `${facts.targetEmail} ${phrase} até ${ends}.${suggestion}`;
-  }
-  return `${facts.targetEmail} está disponível agora.`;
-}
-
-// formatStatusReply was removed intentionally. Replies must come from
-// templateStatusReply (deterministic, free). OpenAI is reserved for
-// parseQuestion above, and only fires when the user types a free-form
-// question in the popup that isn't an email or a plain name.

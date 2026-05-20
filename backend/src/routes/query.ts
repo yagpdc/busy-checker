@@ -5,11 +5,8 @@ import { clientForUser } from "../services/google.js";
 import { currentMeeting, nextFreeSlot } from "../services/calendar.js";
 import { findEmailInDirectory } from "../services/directory.js";
 import { emailForNameHint, presenceForEmail } from "../services/presence.js";
-import {
-  openaiEnabled,
-  parseQuestion,
-  templateStatusReply,
-} from "../services/openai.js";
+import { openaiEnabled, parseQuestion } from "../services/openai.js";
+import { templateStatusReply } from "../services/replies.js";
 
 const router = Router();
 
