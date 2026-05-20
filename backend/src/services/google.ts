@@ -14,7 +14,9 @@ export const GOOGLE_SCOPES = [
   "openid",
   "email",
   "profile",
-  "https://www.googleapis.com/auth/calendar.readonly",
+  // calendar (full) is a superset of calendar.readonly + lets us create
+  // events with Meet links via /schedule.
+  "https://www.googleapis.com/auth/calendar",
   "https://www.googleapis.com/auth/directory.readonly",
 ];
 

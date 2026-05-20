@@ -163,3 +163,39 @@ export async function nextFreeSlot(
 
   return null;
 }
+
+/**
+ * Creates an event on the asker's primary calendar with the target as
+ * invitee and a Meet link attached. Returns the Calendar URL + Meet URL.
+ */
+export async function scheduleMeeting(
+  asker: OAuth2Client,
+  targetEmail: string,
+  start: Date,
+  end: Date,
+  title: string,
+): Promise<{ htmlLink: string; meetLink: string | null }> {
+  const calendar = google.calendar({ version: "v3", auth: asker });
+  const res = await calendar.events.insert({
+    calendarId: "primary",
+    sendUpdates: "all",
+    conferenceDataVersion: 1,
+    requestBody: {
+      summary: title,
+      start: { dateTime: start.toISOString() },
+      end: { dateTime: end.toISOString() },
+      attendees: [{ email: targetEmail }],
+      conferenceData: {
+        createRequest: {
+          requestId: `bc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          conferenceSolutionKey: { type: "hangoutsMeet" },
+        },
+      },
+    },
+  });
+  const meetLink =
+    res.data.conferenceData?.entryPoints?.find(
+      (e) => e.entryPointType === "video",
+    )?.uri ?? null;
+  return { htmlLink: res.data.htmlLink ?? "", meetLink };
+}

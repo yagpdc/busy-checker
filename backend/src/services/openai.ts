@@ -124,7 +124,9 @@ export async function formatStatusReply(
           "Be direct. If they're in a meeting and a title is available, mention it. " +
           "If a title isn't available, just say they're in a meeting until <time>. " +
           'If they\'re online and not in a meeting, say "disponível". ' +
-          'If they\'re offline (no recent activity) and not in a meeting, say "offline / sem atividade recente".',
+          'If they\'re offline (no recent activity) and not in a meeting, say "offline / sem atividade recente". ' +
+          "If a suggestedSlot is provided (meaning they're not available right now), append a short sentence like " +
+          '"Próxima janela livre: hoje às HH:MM." Format the time in Brazilian Portuguese using America/Sao_Paulo time.',
       },
       {
         role: "user",

@@ -7,7 +7,8 @@ const SCOPES = [
   "openid",
   "email",
   "profile",
-  "https://www.googleapis.com/auth/calendar.readonly",
+  // calendar (full) lets us create events with Meet links via /schedule.
+  "https://www.googleapis.com/auth/calendar",
   "https://www.googleapis.com/auth/directory.readonly",
 ];
 
@@ -72,6 +73,13 @@ type Msg =
       question?: string;
       targetEmail?: string;
       targetName?: string;
+    }
+  | {
+      type: "schedule";
+      targetEmail: string;
+      start: string;
+      end: string;
+      title: string;
     };
 
 chrome.runtime.onMessage.addListener(
@@ -93,6 +101,19 @@ chrome.runtime.onMessage.addListener(
               question: msg.question,
               targetEmail: msg.targetEmail,
               targetName: msg.targetName,
+            }),
+          });
+        case "schedule":
+          return await apiFetch<{
+            htmlLink: string;
+            meetLink: string | null;
+          }>("/schedule", {
+            method: "POST",
+            body: JSON.stringify({
+              targetEmail: msg.targetEmail,
+              start: msg.start,
+              end: msg.end,
+              title: msg.title,
             }),
           });
       }
