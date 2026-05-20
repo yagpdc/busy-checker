@@ -5,6 +5,7 @@ import authRouter from "./routes/auth.js";
 import heartbeatRouter from "./routes/heartbeat.js";
 import queryRouter from "./routes/query.js";
 import scheduleRouter from "./routes/schedule.js";
+import slotsRouter from "./routes/slots.js";
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use("/auth", authRouter);
 app.use("/heartbeat", heartbeatRouter);
 app.use("/query", queryRouter);
 app.use("/schedule", scheduleRouter);
+app.use("/slots", slotsRouter);
 
 app.listen(config.port, () => {
   console.log(`busy-checker backend listening on :${config.port}`);

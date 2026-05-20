@@ -165,46 +165,104 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
 
     if (!facts.suggestedSlot) return;
 
-    const slot = facts.suggestedSlot;
-    const slotStart = new Date(slot.start);
-    const slotEnd = new Date(slot.end);
-    const gapMin = Math.floor((slotEnd.getTime() - slotStart.getTime()) / 60000);
+    // === Slot navigation state ===
+    // We start with the first slot from /query; up/down arrows walk through
+    // a locally-cached list, fetching forward from /slots/next on demand.
+    const slots: Slot[] = [facts.suggestedSlot];
+    let cursor = 0;
+    let currentSlot = slots[cursor];
+    let selectedDur = 30;
+    const prevBtn = $<HTMLButtonElement>("#bc-slot-prev");
+    const nextBtn = $<HTMLButtonElement>("#bc-slot-next");
+
+    const renderSlot = (slot: Slot) => {
+      currentSlot = slot;
+      const start = new Date(slot.start);
+      const end = new Date(slot.end);
+      const gapMin = Math.floor((end.getTime() - start.getTime()) / 60000);
+
+      slotTime.textContent = formatSlot(slot);
+      slotHint.textContent = `livre por ${
+        gapMin >= 60
+          ? `${Math.floor(gapMin / 60)}h${gapMin % 60 ? ` ${gapMin % 60}min` : ""}`
+          : `${gapMin}min`
+      } (até ${formatTime(end)})`;
+
+      // Rebuild duration chips for the new gap. Keep the previous selection
+      // if it still fits, else fall back to 30 or the first option.
+      const validDurations = DURATION_OPTIONS_MIN.filter((m) => m <= gapMin);
+      if (validDurations.length === 0) validDurations.push(gapMin);
+      if (!validDurations.includes(selectedDur)) {
+        selectedDur = validDurations.includes(30) ? 30 : validDurations[0];
+      }
+      durRow.innerHTML = "";
+      validDurations.forEach((m) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "bc-dur";
+        btn.textContent = m >= 60 ? `${m / 60}h` : `${m}m`;
+        if (m === selectedDur) btn.dataset.selected = "true";
+        btn.addEventListener("click", () => {
+          durRow
+            .querySelectorAll(".bc-dur")
+            .forEach((b) => delete (b as HTMLElement).dataset.selected);
+          btn.dataset.selected = "true";
+          selectedDur = m;
+        });
+        durRow.appendChild(btn);
+      });
+
+      // Up arrow enabled iff we have a slot before this one.
+      prevBtn.disabled = cursor === 0;
+    };
+
+    prevBtn.addEventListener("click", () => {
+      if (cursor === 0) return;
+      cursor--;
+      renderSlot(slots[cursor]);
+    });
+
+    nextBtn.addEventListener("click", async () => {
+      // Already have the next one cached → just advance.
+      if (cursor < slots.length - 1) {
+        cursor++;
+        renderSlot(slots[cursor]);
+        return;
+      }
+      // Otherwise fetch the next slot after the current one's end.
+      nextBtn.disabled = true;
+      const prevText = nextBtn.textContent;
+      nextBtn.textContent = "…";
+      try {
+        const res = await chrome.runtime.sendMessage({
+          type: "nextSlot",
+          targetEmail: facts.targetEmail,
+          after: currentSlot.end,
+        });
+        if (!res?.ok) throw new Error(res?.error ?? "unknown");
+        const slot = (res.data as { slot: Slot | null }).slot;
+        if (!slot) {
+          // No more slots in the look-ahead window.
+          nextBtn.textContent = "—";
+          slotHint.textContent =
+            (slotHint.textContent ?? "") + " · sem mais janelas livres";
+          return;
+        }
+        slots.push(slot);
+        cursor++;
+        renderSlot(slot);
+      } catch (err) {
+        console.error("[busy-checker] nextSlot failed", err);
+        nextBtn.disabled = false;
+      } finally {
+        nextBtn.textContent = prevText ?? "▼";
+      }
+    });
 
     slotEl.hidden = false;
-    slotTime.textContent = formatSlot(slot);
-    slotHint.textContent = `livre por ${
-      gapMin >= 60
-        ? `${Math.floor(gapMin / 60)}h${gapMin % 60 ? ` ${gapMin % 60}min` : ""}`
-        : `${gapMin}min`
-    } (até ${formatTime(slotEnd)})`;
     scheduleBtn.hidden = false;
-
-    // Pre-populate the title input with a sensible default.
     titleInput.value = `Conversa com ${name}`;
-
-    // Build duration buttons constrained to what fits in the gap.
-    const validDurations = DURATION_OPTIONS_MIN.filter((m) => m <= gapMin);
-    if (validDurations.length === 0) validDurations.push(gapMin); // tiny gap
-    durRow.innerHTML = "";
-    let selectedDur = validDurations.includes(30)
-      ? 30
-      : validDurations[0];
-    validDurations.forEach((m) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "bc-dur";
-      btn.dataset.min = String(m);
-      btn.textContent = m >= 60 ? `${m / 60}h` : `${m}m`;
-      if (m === selectedDur) btn.dataset.selected = "true";
-      btn.addEventListener("click", () => {
-        durRow
-          .querySelectorAll(".bc-dur")
-          .forEach((b) => delete (b as HTMLElement).dataset.selected);
-        btn.dataset.selected = "true";
-        selectedDur = m;
-      });
-      durRow.appendChild(btn);
-    });
+    renderSlot(facts.suggestedSlot);
 
     scheduleBtn.addEventListener("click", () => {
       scheduleBtn.hidden = true;
@@ -222,9 +280,9 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
 
     confirmBtn.addEventListener("click", async () => {
       const title = titleInput.value.trim() || `Conversa com ${name}`;
-      const start = slotStart.toISOString();
+      const start = currentSlot.start;
       const end = new Date(
-        slotStart.getTime() + selectedDur * 60000,
+        new Date(currentSlot.start).getTime() + selectedDur * 60000,
       ).toISOString();
 
       confirmBtn.disabled = true;
@@ -405,12 +463,38 @@ const WIDGET_HTML = `
     background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
     border-radius: 10px;
   }
+  #bc-slot-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
   #bc-slot-label {
     font-size: 10px;
     color: #92400e;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: 700;
+  }
+  #bc-slot-nav { display: flex; gap: 4px; }
+  #bc-slot-nav button {
+    background: rgba(146, 64, 14, 0.12);
+    border: 0;
+    color: #78350f;
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.12s;
+  }
+  #bc-slot-nav button:hover:not(:disabled) {
+    background: rgba(146, 64, 14, 0.22);
+  }
+  #bc-slot-nav button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
   #bc-slot-time {
     font-size: 15px;
@@ -566,7 +650,13 @@ const WIDGET_HTML = `
     </div>
     <p id="bc-reply">consultando agenda</p>
     <div id="bc-slot" hidden>
-      <div id="bc-slot-label">Próxima janela livre</div>
+      <div id="bc-slot-head">
+        <div id="bc-slot-label">Próxima janela livre</div>
+        <div id="bc-slot-nav">
+          <button id="bc-slot-prev" type="button" title="janela anterior" disabled>▲</button>
+          <button id="bc-slot-next" type="button" title="próxima janela">▼</button>
+        </div>
+      </div>
       <div id="bc-slot-time"></div>
       <div id="bc-slot-hint"></div>
     </div>

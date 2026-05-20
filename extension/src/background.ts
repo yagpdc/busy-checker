@@ -80,6 +80,11 @@ type Msg =
       start: string;
       end: string;
       title: string;
+    }
+  | {
+      type: "nextSlot";
+      targetEmail: string;
+      after: string;
     };
 
 chrome.runtime.onMessage.addListener(
@@ -114,6 +119,16 @@ chrome.runtime.onMessage.addListener(
               start: msg.start,
               end: msg.end,
               title: msg.title,
+            }),
+          });
+        case "nextSlot":
+          return await apiFetch<{
+            slot: { start: string; end: string } | null;
+          }>("/slots/next", {
+            method: "POST",
+            body: JSON.stringify({
+              targetEmail: msg.targetEmail,
+              after: msg.after,
             }),
           });
       }
