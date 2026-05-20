@@ -9,19 +9,20 @@ const WIDGET_ID = "busy-checker-widget";
 let lastKey: string | null = null;
 
 function currentConversationName(): string | null {
-  // Google Chat URLs vary: /dm/<id>, /room/<id>, /app/chat/<id> (newer
-  // unified format that doesn't distinguish DM vs space in the path).
-  // Detect via <title> instead: when a conversation is open, it becomes
-  // "<Name|Space> - Google Chat". When nothing is open, just "Google Chat".
+  // Detect via <title>. Observed formats across PWA / web app:
+  //   "<Name> - Google Chat"
+  //   "<Name> - Chat"        (new standalone view)
+  //   "(3) <Name> - Chat"    (with unread count prefix)
+  //   "Google Chat" / "Chat" (nothing open)
   const title = document.title;
-  if (!title || title.trim() === "Google Chat") return null;
-  let name = title.replace(/\s*[-|·]\s*Google Chat\s*$/i, "").trim();
-  // Strip leading unread-count prefix like "(3) " that Chat adds.
-  name = name.replace(/^\(\d+\)\s*/, "");
-  if (!name || name.toLowerCase() === "google chat") return null;
-  // Skip group spaces — they have multiple members and our backend resolves
-  // a single name to a single user. Heuristic: spaces often have a leading
-  // # in Chat's UI, or the title contains "people"/"membros".
+  if (!title) return null;
+  let name = title
+    .replace(/^\(\d+\)\s*/, "") // strip leading "(3) " unread prefix
+    .replace(/\s*[-|·]\s*(Google\s+)?Chat\s*$/i, "")
+    .trim();
+  if (!name) return null;
+  if (/^(google\s+)?chat$/i.test(name)) return null;
+  // Skip group spaces — title heuristics: leading "#" or words like "membros".
   if (/^#/.test(name)) return null;
   if (/\b(people|membros|members|participantes)\b/i.test(name)) return null;
   return name;
