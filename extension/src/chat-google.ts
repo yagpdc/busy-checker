@@ -11,20 +11,24 @@ let lastKey: string | null = null;
 function currentConversationName(): string | null {
   // Detect via <title>. Observed formats across PWA / web app:
   //   "<Name> - Google Chat"
-  //   "<Name> - Chat"        (new standalone view)
-  //   "(3) <Name> - Chat"    (with unread count prefix)
+  //   "<Name> - Chat"
+  //   "(3) <Name> - Chat"
   //   "Google Chat" / "Chat" (nothing open)
+  // \p{Pd} = any Unicode dash (hyphen, en-dash, em-dash, etc).
   const title = document.title;
   if (!title) return null;
-  let name = title
-    .replace(/^\(\d+\)\s*/, "") // strip leading "(3) " unread prefix
-    .replace(/\s*[-|·]\s*(Google\s+)?Chat\s*$/i, "")
-    .trim();
+  const stripped = title.replace(/^\(\d+\)\s*/, "");
+  const m = stripped.match(/^(.*?)\s+[\p{Pd}|·]\s+(Google\s+)?Chat\s*$/u);
+  if (!m) {
+    console.debug("[busy-checker] title not in conversation form:", title);
+    return null;
+  }
+  const name = m[1].trim();
   if (!name) return null;
   if (/^(google\s+)?chat$/i.test(name)) return null;
-  // Skip group spaces — title heuristics: leading "#" or words like "membros".
   if (/^#/.test(name)) return null;
   if (/\b(people|membros|members|participantes)\b/i.test(name)) return null;
+  console.debug("[busy-checker] detected conversation:", name);
   return name;
 }
 
