@@ -123,39 +123,7 @@ export function templateStatusReply(facts: StatusFacts): string {
   return `${facts.targetEmail} sem reunião agora, mas sem sinal de presença (talvez não tenha a extensão instalada).${suggestion}`;
 }
 
-export async function formatStatusReply(
-  question: string,
-  facts: StatusFacts,
-): Promise<string> {
-  const resp = await requireClient().chat.completions.create({
-    model: config.openai.model,
-    temperature: 0.3,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You answer questions about someone's current availability in 1-2 short Portuguese sentences. " +
-          "Be direct. If they're in a meeting and a title is available, mention it. " +
-          "If a title isn't available, just say they're in a meeting until <time>. " +
-          'If they\'re online and not in a meeting, say "disponível". ' +
-          'If they\'re offline (no recent activity) and not in a meeting, say "offline / sem atividade recente". ' +
-          "If a suggestedSlot is provided (meaning they're not available right now), append a short sentence like " +
-          '"Próxima janela livre: hoje às HH:MM." Format the time in Brazilian Portuguese using America/Sao_Paulo time.',
-      },
-      {
-        role: "user",
-        content:
-          `Pergunta: ${question}\n` +
-          `Fatos: ${JSON.stringify({
-            ...facts,
-            lastActivityAt: facts.lastActivityAt?.toISOString() ?? null,
-            meeting:
-              facts.meeting.busy
-                ? { ...facts.meeting, endsAt: facts.meeting.endsAt.toISOString() }
-                : facts.meeting,
-          })}`,
-      },
-    ],
-  });
-  return resp.choices[0]?.message?.content?.trim() ?? "Não consegui responder.";
-}
+// formatStatusReply was removed intentionally. Replies must come from
+// templateStatusReply (deterministic, free). OpenAI is reserved for
+// parseQuestion above, and only fires when the user types a free-form
+// question in the popup that isn't an email or a plain name.
