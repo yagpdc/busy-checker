@@ -9,11 +9,18 @@ function ping(source: string): void {
   const now = Date.now();
   if (now - lastSent < THROTTLE_MS) return;
   lastSent = now;
-  chrome.runtime
-    .sendMessage({ type: "activity", source })
-    .catch(() => {
-      // Background may be asleep; it'll get the next one.
-    });
+  // sendMessage can throw synchronously ("Extension context invalidated")
+  // when the page survived an extension reload — the content script is
+  // orphaned. Nothing useful we can do; the next page reload re-injects.
+  try {
+    chrome.runtime
+      .sendMessage({ type: "activity", source })
+      .catch(() => {
+        /* background asleep or gone — next ping will retry */
+      });
+  } catch {
+    /* orphaned context */
+  }
 }
 
 window.addEventListener("mousemove", () => ping("mouse"), { passive: true });

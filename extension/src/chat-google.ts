@@ -85,7 +85,10 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     if (!res?.ok) throw new Error(res?.error ?? "unknown_error");
     setReply(res.data.reply, "ok");
   } catch (err) {
-    setReply(`não rolou: ${(err as Error).message}`, "error");
+    const msg = (err as Error).message;
+    // Orphaned script after extension reload — keep quiet, user just needs F5.
+    if (msg.includes("Extension context invalidated")) return;
+    setReply(`não rolou: ${msg}`, "error");
   }
 }
 
