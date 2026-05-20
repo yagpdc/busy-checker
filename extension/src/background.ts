@@ -8,6 +8,7 @@ const SCOPES = [
   "email",
   "profile",
   "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/directory.readonly",
 ];
 
 async function signIn(): Promise<{ email: string; name: string | null }> {

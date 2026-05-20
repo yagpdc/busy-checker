@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSession } from "../middleware/session.js";
 import { clientForUser } from "../services/google.js";
 import { currentMeeting, nextFreeSlot } from "../services/calendar.js";
+import { findEmailInDirectory } from "../services/directory.js";
 import { emailForNameHint, presenceForEmail } from "../services/presence.js";
 import {
   formatStatusReply,
@@ -30,8 +31,18 @@ router.post("/", requireSession, async (req, res) => {
   let targetEmail = parse.data.targetEmail ?? null;
   let displayHint: string | null = parse.data.targetName ?? null;
 
+  // Need the asker client early — directory lookup also goes through it.
+  const asker = await clientForUser(req.session!.userId);
+
+  // Resolution priority: explicit email > local users table > Workspace directory.
+  async function resolveByHint(hint: string): Promise<string | null> {
+    const local = await emailForNameHint(hint);
+    if (local) return local;
+    return await findEmailInDirectory(asker, hint);
+  }
+
   if (!targetEmail && parse.data.targetName) {
-    targetEmail = await emailForNameHint(parse.data.targetName);
+    targetEmail = await resolveByHint(parse.data.targetName);
   }
 
   if (!targetEmail && parse.data.question) {
@@ -47,21 +58,19 @@ router.post("/", requireSession, async (req, res) => {
     targetEmail = parsed.targetEmail;
     displayHint = displayHint ?? parsed.targetHint;
     if (!targetEmail && parsed.targetHint) {
-      targetEmail = await emailForNameHint(parsed.targetHint);
+      targetEmail = await resolveByHint(parsed.targetHint);
     }
   }
 
   if (!targetEmail) {
     res.json({
       reply: displayHint
-        ? `Não achei "${displayHint}" entre os usuários registrados (precisa ter instalado a extensão, ou passe um email).`
+        ? `Não achei "${displayHint}" no Workspace (nome ambíguo ou não encontrado — tenta com email).`
         : "Não consegui identificar sobre quem você está perguntando.",
       facts: null,
     });
     return;
   }
-
-  const asker = await clientForUser(req.session!.userId);
 
   const [presence, meeting] = await Promise.all([
     presenceForEmail(targetEmail),

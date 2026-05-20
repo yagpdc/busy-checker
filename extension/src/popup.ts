@@ -63,12 +63,20 @@ $<HTMLButtonElement>("ask").addEventListener("click", async () => {
   clearError();
   const q = $<HTMLTextAreaElement>("question").value.trim();
   if (!q) return;
-  // If the input looks like an email, send it directly so we skip the LLM
-  // extraction step (works even without OPENAI_API_KEY configured).
+  // Input strategy:
+  //  - contains '@' → treat as email
+  //  - looks like a plain name (no spaces fancy chars) → send as targetName
+  //    so the backend resolves via local users / Workspace directory
+  //  - everything else → send as free-text question (needs OpenAI)
   const emailMatch = q.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
-  const payload = emailMatch
-    ? { type: "query" as const, targetEmail: emailMatch[0] }
-    : { type: "query" as const, question: q };
+  let payload: { type: "query"; targetEmail?: string; targetName?: string; question?: string };
+  if (emailMatch) {
+    payload = { type: "query", targetEmail: emailMatch[0] };
+  } else if (/^[\p{L}\s.'-]{2,80}$/u.test(q)) {
+    payload = { type: "query", targetName: q };
+  } else {
+    payload = { type: "query", question: q };
+  }
   try {
     const data = await send<{ reply: string; facts: unknown }>(payload);
     $<HTMLParagraphElement>("reply").textContent = data.reply;
