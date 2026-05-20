@@ -58,7 +58,12 @@ export type StatusFacts = {
   lastActivityAt: Date | null;
   meeting:
     | { busy: false }
-    | { busy: true; title: string | null; endsAt: Date };
+    | {
+        busy: true;
+        kind: "meeting" | "outOfOffice" | "focusTime";
+        title: string | null;
+        endsAt: Date;
+      };
   suggestedSlot: { start: Date; end: Date } | null;
 };
 
@@ -89,15 +94,24 @@ export function templateStatusReply(facts: StatusFacts): string {
     : "";
 
   if (facts.meeting.busy) {
-    const ends = facts.meeting.endsAt.toLocaleTimeString("pt-BR", {
+    const ends = facts.meeting.endsAt.toLocaleString("pt-BR", {
       timeZone: "America/Sao_Paulo",
+      day: "2-digit",
+      month: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
     });
-    const title = facts.meeting.title
-      ? ` em "${facts.meeting.title}"`
-      : " em reunião";
-    return `${facts.targetEmail} está${title} até ${ends}.${suggestion}`;
+    let phrase: string;
+    if (facts.meeting.kind === "outOfOffice") {
+      phrase = "está fora do escritório (Ausente)";
+    } else if (facts.meeting.kind === "focusTime") {
+      phrase = "está em foco";
+    } else if (facts.meeting.title) {
+      phrase = `está em "${facts.meeting.title}"`;
+    } else {
+      phrase = "está em reunião";
+    }
+    return `${facts.targetEmail} ${phrase} até ${ends}.${suggestion}`;
   }
   if (facts.online) return `${facts.targetEmail} está disponível agora.`;
   if (facts.lastActivityAt) {

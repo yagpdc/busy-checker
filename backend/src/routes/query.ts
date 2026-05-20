@@ -6,7 +6,6 @@ import { currentMeeting, nextFreeSlot } from "../services/calendar.js";
 import { findEmailInDirectory } from "../services/directory.js";
 import { emailForNameHint, presenceForEmail } from "../services/presence.js";
 import {
-  formatStatusReply,
   openaiEnabled,
   parseQuestion,
   templateStatusReply,
@@ -97,9 +96,10 @@ router.post("/", requireSession, async (req, res) => {
     suggestedSlot,
   };
 
-  const reply = openaiEnabled
-    ? await formatStatusReply(parse.data.question ?? "", facts)
-    : templateStatusReply(facts);
+  // Reply text is always built from the template — it's deterministic and
+  // doesn't hallucinate times. OpenAI is reserved for parsing free-form
+  // questions in `parseQuestion` above.
+  const reply = templateStatusReply(facts);
 
   res.json({
     reply,

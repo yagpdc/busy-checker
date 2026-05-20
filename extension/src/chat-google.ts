@@ -69,7 +69,14 @@ type Facts = {
   targetEmail: string;
   online: boolean;
   lastActivityAt: string | null;
-  meeting: { busy: false } | { busy: true; title: string | null; endsAt: string };
+  meeting:
+    | { busy: false }
+    | {
+        busy: true;
+        kind: "meeting" | "outOfOffice" | "focusTime";
+        title: string | null;
+        endsAt: string;
+      };
   suggestedSlot: Slot | null;
 };
 
@@ -141,7 +148,13 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
 
     if (facts.meeting.busy) {
       root.dataset.status = "busy";
-      statusText.textContent = "em reunião";
+      if (facts.meeting.kind === "outOfOffice") {
+        statusText.textContent = "ausente";
+      } else if (facts.meeting.kind === "focusTime") {
+        statusText.textContent = "em foco";
+      } else {
+        statusText.textContent = "em reunião";
+      }
     } else if (facts.online) {
       root.dataset.status = "available";
       statusText.textContent = "disponível agora";

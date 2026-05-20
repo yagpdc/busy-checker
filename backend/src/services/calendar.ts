@@ -1,9 +1,25 @@
 import { google } from "googleapis";
 import type { OAuth2Client } from "google-auth-library";
 
+export type MeetingKind = "meeting" | "outOfOffice" | "focusTime";
+
 export type MeetingStatus =
   | { busy: false }
-  | { busy: true; title: string | null; endsAt: Date };
+  | { busy: true; kind: MeetingKind; title: string | null; endsAt: Date };
+
+function eventKind(eventType: string | null | undefined): MeetingKind {
+  if (eventType === "outOfOffice") return "outOfOffice";
+  if (eventType === "focusTime") return "focusTime";
+  return "meeting";
+}
+
+// Working-location events are informational and don't block time.
+function blocksTime(ev: { transparency?: string | null; status?: string | null; eventType?: string | null }): boolean {
+  if (ev.transparency === "transparent") return false;
+  if (ev.status === "cancelled") return false;
+  if (ev.eventType === "workingLocation") return false;
+  return true;
+}
 
 /**
  * Checks whether `targetEmail` is currently in a meeting. Uses the
@@ -21,7 +37,8 @@ export async function currentMeeting(
   const timeMin = now.toISOString();
   const timeMax = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
 
-  // Try events.list first — gives us the title when accessible.
+  // Try events.list first — gives us titles + eventType (so we can tell
+  // "out of office" apart from "meeting").
   try {
     const { data } = await calendar.events.list({
       calendarId: targetEmail,
@@ -29,11 +46,10 @@ export async function currentMeeting(
       timeMax,
       singleEvents: true,
       orderBy: "startTime",
-      maxResults: 5,
+      maxResults: 10,
     });
     const active = (data.items ?? []).find((ev) => {
-      if (ev.transparency === "transparent") return false;
-      if (ev.status === "cancelled") return false;
+      if (!blocksTime(ev)) return false;
       const start = ev.start?.dateTime ?? ev.start?.date;
       const end = ev.end?.dateTime ?? ev.end?.date;
       if (!start || !end) return false;
@@ -45,13 +61,14 @@ export async function currentMeeting(
     const endIso = active.end?.dateTime ?? active.end?.date!;
     return {
       busy: true,
+      kind: eventKind(active.eventType),
       title: active.summary ?? null,
       endsAt: new Date(endIso),
     };
   } catch (err: unknown) {
     const code = (err as { code?: number }).code;
     if (code !== 403 && code !== 404) throw err;
-    // No event-detail access — fall back to FreeBusy (no titles).
+    // No event-detail access — fall back to FreeBusy (no titles, no kind).
   }
 
   const fb = await calendar.freebusy.query({
@@ -70,7 +87,12 @@ export async function currentMeeting(
     );
   });
   if (!active) return { busy: false };
-  return { busy: true, title: null, endsAt: new Date(active.end!) };
+  return {
+    busy: true,
+    kind: "meeting",
+    title: null,
+    endsAt: new Date(active.end!),
+  };
 }
 
 /**
@@ -101,17 +123,44 @@ export async function nextFreeSlot(
     now.getTime() + lookAheadDays * 24 * 60 * 60 * 1000,
   ).toISOString();
 
-  const fb = await calendar.freebusy.query({
-    requestBody: { timeMin, timeMax, items: [{ id: targetEmail }] },
-  });
-
-  const busy = (fb.data.calendars?.[targetEmail]?.busy ?? [])
-    .filter((b): b is { start: string; end: string } => !!b.start && !!b.end)
-    .map((b) => ({
-      start: new Date(b.start).getTime(),
-      end: new Date(b.end).getTime(),
-    }))
-    .sort((a, b) => a.start - b.start);
+  // Prefer events.list — it surfaces OOO/eventType correctly. FreeBusy
+  // sometimes underreports OOO blocks, leading us to suggest slots during
+  // someone's away period. Fall back to FreeBusy if event-detail access
+  // is denied.
+  let busy: { start: number; end: number }[] = [];
+  try {
+    const { data } = await calendar.events.list({
+      calendarId: targetEmail,
+      timeMin,
+      timeMax,
+      singleEvents: true,
+      orderBy: "startTime",
+      maxResults: 250,
+    });
+    busy = (data.items ?? [])
+      .filter(blocksTime)
+      .map((ev) => {
+        const s = ev.start?.dateTime ?? ev.start?.date;
+        const e = ev.end?.dateTime ?? ev.end?.date;
+        if (!s || !e) return null;
+        return { start: new Date(s).getTime(), end: new Date(e).getTime() };
+      })
+      .filter((x): x is { start: number; end: number } => x !== null)
+      .sort((a, b) => a.start - b.start);
+  } catch (err: unknown) {
+    const code = (err as { code?: number }).code;
+    if (code !== 403 && code !== 404) throw err;
+    const fb = await calendar.freebusy.query({
+      requestBody: { timeMin, timeMax, items: [{ id: targetEmail }] },
+    });
+    busy = (fb.data.calendars?.[targetEmail]?.busy ?? [])
+      .filter((b): b is { start: string; end: string } => !!b.start && !!b.end)
+      .map((b) => ({
+        start: new Date(b.start).getTime(),
+        end: new Date(b.end).getTime(),
+      }))
+      .sort((a, b) => a.start - b.start);
+  }
 
   // Build working windows in target TZ for the next N days, skipping weekends.
   const earliest = now.getTime() + 5 * 60 * 1000; // 5min buffer from now
