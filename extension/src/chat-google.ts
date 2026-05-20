@@ -174,8 +174,19 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
             );
           success.innerHTML = parts.join(" · ");
         } catch (err) {
+          const msg = (err as Error).message;
           scheduleBtn.disabled = false;
-          scheduleBtn.textContent = "❌ erro — tentar de novo";
+          scheduleBtn.textContent = "📅 Tentar de novo";
+          // Surface the error inline so the user doesn't need DevTools.
+          success.hidden = false;
+          success.style.cssText =
+            "background:#fef2f2!important;color:#991b1b!important;";
+          const hint = /insufficient_scope|Insufficient Permission|403/i.test(
+            msg,
+          )
+            ? " Sair/Entrar de novo na extensão pra reautorizar o escopo de Calendar."
+            : "";
+          success.textContent = `❌ ${msg}.${hint}`;
           console.error("[busy-checker] schedule failed", err);
         }
       });
