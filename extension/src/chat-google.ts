@@ -233,9 +233,19 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       }
     };
 
+    // Toggle a `data-flash` attribute briefly so the inner content
+    // re-runs its keyframe each time we navigate — restarts the animation.
+    const flashSlot = () => {
+      slotEl.dataset.flash = "false";
+      // Force a reflow so removing+adding the attribute re-triggers the anim.
+      void (slotEl as HTMLElement).offsetWidth;
+      slotEl.dataset.flash = "true";
+    };
+
     prevBtn.addEventListener("click", () => {
       if (cursor === 0) return;
       cursor--;
+      flashSlot();
       renderSlot(slots[cursor]);
     });
 
@@ -243,6 +253,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       // Move within cached slots first.
       if (cursor < slots.length - 1) {
         cursor++;
+        flashSlot();
         renderSlot(slots[cursor]);
         return;
       }
@@ -266,7 +277,8 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         }
         slots.push(slot);
         cursor++;
-        renderSlot(slot); // re-enables and shows "▼" again
+        flashSlot();
+        renderSlot(slot); // re-enables and shows "↓" again
       } catch (err) {
         console.error("[busy-checker] nextSlot failed", err);
         nextBtn.disabled = false;
@@ -370,11 +382,12 @@ const WIDGET_HTML = `
       0 1px 2px rgba(0,0,0,0.04),
       0 12px 32px rgba(15, 23, 42, 0.10);
     overflow: hidden;
-    animation: bc-fade-up 0.18s ease-out;
+    transform-origin: bottom right;
+    animation: bc-enter 0.32s cubic-bezier(0.16, 1, 0.3, 1);
   }
-  @keyframes bc-fade-up {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
+  @keyframes bc-enter {
+    from { opacity: 0; transform: translateY(8px) scale(0.985); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
   }
 
   #bc-header {
@@ -425,6 +438,24 @@ const WIDGET_HTML = `
     width: 7px; height: 7px;
     border-radius: 50%;
     background: #9ca3af;
+    transition: background-color 0.25s ease;
+  }
+  /* Soft pulsing while the request is in flight */
+  #bc-root[data-state="thinking"] #bc-status-dot {
+    animation: bc-dot-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes bc-dot-pulse {
+    0%, 100% { opacity: 0.5; transform: scale(0.85); }
+    50%      { opacity: 1;   transform: scale(1.1); }
+  }
+  /* When we transition to a resolved state, a one-shot pop */
+  #bc-root[data-state="ok"] #bc-status-dot {
+    animation: bc-dot-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes bc-dot-pop {
+    0%   { transform: scale(0.6); }
+    55%  { transform: scale(1.4); }
+    100% { transform: scale(1); }
   }
   #bc-root[data-status="available"] #bc-status-dot { background: #059669; }
   #bc-root[data-status="busy"]      #bc-status-dot { background: #dc2626; }
@@ -435,6 +466,7 @@ const WIDGET_HTML = `
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: 600;
+    transition: color 0.2s ease;
   }
 
   #bc-reply {
@@ -442,6 +474,15 @@ const WIDGET_HTML = `
     line-height: 1.55;
     color: #374151;
     margin: 0;
+    transition: opacity 0.2s ease, color 0.2s ease;
+  }
+  #bc-root[data-state="thinking"] #bc-reply { color: #9ca3af; }
+  #bc-root[data-state="ok"] #bc-reply {
+    animation: bc-reply-in 0.3s ease-out;
+  }
+  @keyframes bc-reply-in {
+    from { opacity: 0; transform: translateY(2px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
   #bc-root[data-state="thinking"] #bc-reply::after {
     content: "…";
@@ -464,6 +505,23 @@ const WIDGET_HTML = `
     background: #fafafa;
     border: 1px solid #e5e7eb;
     border-radius: 8px;
+  }
+  #bc-slot:not([hidden]) {
+    animation: bc-section-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes bc-section-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  /* Brief flash on the inner content whenever the slot changes (↑/↓ nav) */
+  #bc-slot[data-flash="true"] #bc-slot-time,
+  #bc-slot[data-flash="true"] #bc-slot-hint,
+  #bc-slot[data-flash="true"] #bc-dur-row {
+    animation: bc-slot-flash 0.25s ease-out;
+  }
+  @keyframes bc-slot-flash {
+    from { opacity: 0.2; transform: translateY(-3px); }
+    to   { opacity: 1;   transform: translateY(0); }
   }
   #bc-slot-head {
     display: flex;
@@ -489,15 +547,18 @@ const WIDGET_HTML = `
     line-height: 1;
     cursor: pointer;
     padding: 0;
-    transition: all 0.12s;
+    transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.08s;
   }
   #bc-slot-nav button:hover:not(:disabled) {
     background: #f3f4f6;
     color: #111827;
     border-color: #d1d5db;
   }
+  #bc-slot-nav button:active:not(:disabled) {
+    transform: scale(0.9);
+  }
   #bc-slot-nav button:disabled {
-    opacity: 0.35;
+    opacity: 0.3;
     cursor: not-allowed;
   }
   #bc-slot-time {
@@ -526,9 +587,16 @@ const WIDGET_HTML = `
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.12s;
+    transition: background 0.15s, transform 0.08s, box-shadow 0.15s;
   }
-  #bc-schedule:hover  { background: #1f2937; }
+  #bc-schedule:hover  {
+    background: #1f2937;
+    box-shadow: 0 4px 12px rgba(17, 24, 39, 0.15);
+  }
+  #bc-schedule:active { transform: translateY(1px); }
+  #bc-schedule:not([hidden]) {
+    animation: bc-section-in 0.35s 0.04s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
 
   #bc-form {
     margin-top: 12px;
@@ -536,6 +604,14 @@ const WIDGET_HTML = `
     background: #fafafa;
     border: 1px solid #e5e7eb;
     border-radius: 8px;
+  }
+  #bc-form:not([hidden]) {
+    animation: bc-form-expand 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    transform-origin: top center;
+  }
+  @keyframes bc-form-expand {
+    from { opacity: 0; transform: translateY(-6px) scaleY(0.96); }
+    to   { opacity: 1; transform: translateY(0)    scaleY(1); }
   }
   #bc-form label {
     display: block;
@@ -577,10 +653,11 @@ const WIDGET_HTML = `
     font-weight: 500;
     color: #374151;
     cursor: pointer;
-    transition: all 0.12s;
+    transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.08s;
     font-variant-numeric: tabular-nums;
   }
   .bc-dur:hover { background: #f3f4f6; }
+  .bc-dur:active { transform: scale(0.95); }
   .bc-dur[data-selected="true"] {
     background: #111827;
     color: #ffffff;
@@ -603,8 +680,10 @@ const WIDGET_HTML = `
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
+    transition: background 0.15s, transform 0.08s;
   }
   #bc-confirm:hover { background: #1f2937; }
+  #bc-confirm:active:not(:disabled) { transform: translateY(1px); }
   #bc-confirm:disabled {
     background: #9ca3af;
     cursor: wait;
@@ -618,6 +697,7 @@ const WIDGET_HTML = `
     font: inherit;
     font-size: 13px;
     cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
   }
   #bc-cancel:hover { background: #f9fafb; color: #374151; }
   #bc-cancel:disabled { cursor: wait; opacity: 0.6; }
@@ -632,7 +712,17 @@ const WIDGET_HTML = `
     font-size: 12px;
     line-height: 1.55;
   }
+  #bc-success:not([hidden]) {
+    animation: bc-success-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes bc-success-in {
+    0%   { opacity: 0; transform: scale(0.94) translateY(-4px); }
+    100% { opacity: 1; transform: scale(1)    translateY(0); }
+  }
   #bc-success a { color: #166534; font-weight: 600; text-decoration: underline; }
+  #bc-success a:hover { color: #14532d; }
+
+  #bc-close { transition: background 0.15s, color 0.15s; }
 
   #bc-root[data-state="error"] #bc-body { background: #fef2f2; }
 </style>
