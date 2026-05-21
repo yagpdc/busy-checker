@@ -91,11 +91,24 @@
         </div>
 
         <section id="result" hidden>
+          <div id="reply-loading" class="reply-loading" hidden>
+            <span class="loading-kanji">時</span>
+            <span class="loading-text"></span>
+            <svg
+              class="loading-spinner"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+          </div>
           <p id="reply"></p>
-          <details>
-            <summary>Detalhes</summary>
-            <pre id="facts"></pre>
-          </details>
         </section>
 
         <p id="error" hidden></p>

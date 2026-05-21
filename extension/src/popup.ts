@@ -99,6 +99,44 @@ $<HTMLButtonElement>("sign-out").addEventListener("click", async () => {
 });
 
 // === Ask flow ===
+// Mirrors the widget's loading phrases so the popup feels like the same app.
+const LOADING_PHRASES = [
+  "時間を整理しています...",
+  "Só mais alguns segundos",
+  "Carregando o futuro",
+  "Harmonizando agendas",
+  "Processando eventos",
+  "Preparando sua próxima reunião...",
+];
+function pickLoadingPhrase(): string {
+  return LOADING_PHRASES[Math.floor(Math.random() * LOADING_PHRASES.length)];
+}
+
+function showLoading(): void {
+  const loadingEl = $<HTMLDivElement>("reply-loading");
+  const textEl = loadingEl.querySelector(".loading-text") as HTMLSpanElement;
+  textEl.textContent = pickLoadingPhrase();
+  $<HTMLParagraphElement>("reply").textContent = "";
+  $<HTMLParagraphElement>("reply").hidden = true;
+  loadingEl.hidden = false;
+  $<HTMLElement>("result").hidden = false;
+  $<HTMLButtonElement>("ask").disabled = true;
+}
+
+function showReply(text: string): void {
+  $<HTMLDivElement>("reply-loading").hidden = true;
+  const reply = $<HTMLParagraphElement>("reply");
+  reply.textContent = text;
+  reply.hidden = false;
+  $<HTMLElement>("result").hidden = false;
+  $<HTMLButtonElement>("ask").disabled = false;
+}
+
+function endLoading(): void {
+  $<HTMLDivElement>("reply-loading").hidden = true;
+  $<HTMLButtonElement>("ask").disabled = false;
+}
+
 async function runQuery(q: string): Promise<void> {
   clearError();
   if (!q) return;
@@ -121,12 +159,12 @@ async function runQuery(q: string): Promise<void> {
   } else {
     payload = { type: "query", question: q };
   }
+  showLoading();
   try {
     const data = await send<{ reply: string; facts: unknown }>(payload);
-    $<HTMLParagraphElement>("reply").textContent = data.reply;
-    $<HTMLPreElement>("facts").textContent = JSON.stringify(data.facts, null, 2);
-    $<HTMLElement>("result").hidden = false;
+    showReply(data.reply);
   } catch (err) {
+    endLoading();
     showError((err as Error).message);
   }
 }

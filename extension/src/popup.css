@@ -229,29 +229,48 @@ main { padding: 14px 16px 16px; }
   to   { opacity: 1; transform: translateY(0); }
 }
 #reply {
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 13px;
   line-height: 1.5;
   color: #111827;
 }
-#result details summary {
-  font-size: 11px;
-  color: #6b7280;
-  cursor: pointer;
-  user-select: none;
-  letter-spacing: -0.01em;
+
+/* === Mini loading (mirrors widget's loading row, slightly smaller) === */
+.reply-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  animation: fade-in 0.2s ease-out;
 }
-#result details summary:hover { color: #111827; }
-pre {
-  font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
-  font-size: 10.5px;
+.loading-kanji {
+  font-family: "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP",
+    "Noto Serif CJK JP", "MS Mincho", "Songti SC", serif;
+  font-size: 18px;
+  color: #111827;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+}
+.loading-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
   color: #6b7280;
-  background: #ffffff;
-  padding: 8px 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  margin: 8px 0 0;
-  overflow-x: auto;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.loading-spinner {
+  width: 14px;
+  height: 14px;
+  color: #9ca3af;
+  flex-shrink: 0;
+  animation: spin 1.4s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 #error {
