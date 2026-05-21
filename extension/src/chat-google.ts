@@ -298,12 +298,14 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     type DayEntry = {
       slots: Slot[];
       events: CalendarEvent[];
+      meetingsCount: number | null;
       fullyFetched: boolean;
     };
     const entries: DayEntry[] = [
       {
         slots: [facts.suggestedSlot],
         events: facts.eventsAround ?? [],
+        meetingsCount: facts.meetingsToday,
         fullyFetched: false,
       },
     ];
@@ -610,14 +612,20 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
           after,
         });
         if (res?.ok) {
-          const { slot, eventsAround: nextEvents } = res.data as {
+          const {
+            slot,
+            eventsAround: nextEvents,
+            meetingsToday: nextCount,
+          } = res.data as {
             slot: Slot | null;
             eventsAround: CalendarEvent[];
+            meetingsToday: number | null;
           };
           if (slot) {
             entries.push({
               slots: [slot],
               events: nextEvents ?? [],
+              meetingsCount: nextCount ?? null,
               fullyFetched: false,
             });
           } else {
@@ -673,9 +681,14 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
           after: lastEnd,
         });
         if (!res?.ok) throw new Error(res?.error ?? "unknown");
-        const { slot, eventsAround: evs } = res.data as {
+        const {
+          slot,
+          eventsAround: evs,
+          meetingsToday: count,
+        } = res.data as {
           slot: Slot | null;
           eventsAround: CalendarEvent[];
+          meetingsToday: number | null;
         };
         if (!slot) {
           day.fullyFetched = true;
@@ -693,6 +706,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
           entries.push({
             slots: [slot],
             events: evs ?? [],
+            meetingsCount: count ?? null,
             fullyFetched: false,
           });
         }
@@ -711,6 +725,16 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       const day = entries[dayCursor];
       const slot = day.slots[slotCursor];
       const events = day.events;
+
+      // Badge reflects the currently-viewed day's meeting count, not
+      // today's. Hidden when count is unknown for that day.
+      if (day.meetingsCount === null || day.meetingsCount === undefined) {
+        meetingsBadge.hidden = true;
+      } else {
+        meetingsBadge.hidden = false;
+        meetingsCount.textContent = String(day.meetingsCount);
+      }
+
       const fromTime = animateTime ? displayedTime : null;
       currentSlot = slot;
       const start = new Date(slot.start);

@@ -141,7 +141,14 @@ router.post("/", requireSession, async (req, res) => {
       eventsAround: facts.suggestedSlot
         ? await eventsAround(asker, targetEmail, facts.suggestedSlot.start).catch(() => [])
         : [],
-      meetingsToday: await meetingsTodayCount(asker, targetEmail).catch(() => null),
+      // Count of blocking meetings on the suggested slot's day — the badge
+      // reflects whichever day the user is currently viewing, not the
+      // calendar day the request hit the server.
+      meetingsToday: await meetingsTodayCount(
+        asker,
+        targetEmail,
+        facts.suggestedSlot?.start ?? new Date(),
+      ).catch(() => null),
     },
   });
 });

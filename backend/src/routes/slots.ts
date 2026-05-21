@@ -2,7 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireSession } from "../middleware/session.js";
 import { clientForUser } from "../services/google.js";
-import { eventsAround, nextFreeSlot } from "../services/calendar.js";
+import {
+  eventsAround,
+  meetingsTodayCount,
+  nextFreeSlot,
+} from "../services/calendar.js";
 
 const router = Router();
 
@@ -38,11 +42,17 @@ router.post("/next", requireSession, async (req, res) => {
     const evts = slot
       ? await eventsAround(asker, parse.data.targetEmail, slot.start).catch(() => [])
       : [];
+    const meetingsToday = slot
+      ? await meetingsTodayCount(asker, parse.data.targetEmail, slot.start).catch(
+          () => null,
+        )
+      : null;
     res.json({
       slot: slot
         ? { start: slot.start.toISOString(), end: slot.end.toISOString() }
         : null,
       eventsAround: evts,
+      meetingsToday,
     });
   } catch (err) {
     console.error("slots/next failed", err);
