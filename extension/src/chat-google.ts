@@ -433,11 +433,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
           timeLabel: formatTime(new Date(s)),
         });
       }
-      const slotMin = Math.floor((slotEndMs - slotStartMs) / 60000);
-      const slotTitle =
-        slotMin >= 60
-          ? `slot livre · ${Math.floor(slotMin / 60)}h${slotMin % 60 ? ` ${slotMin % 60}min` : ""}`
-          : `slot livre · ${slotMin}min`;
+      const slotTitle = "Horário livre para agendamento";
       const slotEndClipped = Math.min(slotEndMs, winEnd);
       items.push({
         kind: "slot",
