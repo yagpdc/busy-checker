@@ -139,11 +139,10 @@ function reactToState(): void {
   if (name) openWidget(name);
 }
 
-const obs = new MutationObserver(reactToState);
-obs.observe(document, { subtree: true, childList: true, characterData: true });
-window.addEventListener("popstate", reactToState);
-reactToState();
-setInterval(reactToState, 2000);
+// MutationObserver setup + initial trigger live at the BOTTOM of the
+// file (after `const WIDGET_HTML` is initialized) — otherwise the
+// initial reactToState() call hits the temporal-dead-zone for that
+// const and the widget throws on every tick.
 
 // === Widget ===
 function removeWidget(): void {
@@ -1591,3 +1590,11 @@ const WIDGET_HTML = `
   </div>
 </div>
 `;
+
+// Bootstrap — moved here so WIDGET_HTML is already initialized before
+// reactToState() can fire on a tab that already has a conversation open.
+const obs = new MutationObserver(reactToState);
+obs.observe(document, { subtree: true, childList: true, characterData: true });
+window.addEventListener("popstate", reactToState);
+reactToState();
+setInterval(reactToState, 2000);
