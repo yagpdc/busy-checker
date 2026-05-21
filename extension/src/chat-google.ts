@@ -458,7 +458,9 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         // Day-based navigation: jump to midnight of the next SP day so the
         // returned slot is the FIRST free window on a DIFFERENT day (skips
         // any remaining slots on the current day).
-        const after = nextSpDayMidnight(currentSlot.start).toISOString();
+        const after = nextSpDayMidnight(
+          new Date(currentSlot.start),
+        ).toISOString();
         const res = await chrome.runtime.sendMessage({
           type: "nextSlot",
           targetEmail: facts.targetEmail,
