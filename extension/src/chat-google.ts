@@ -192,6 +192,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
   const emailEl = $("#bc-email") as HTMLElement;
   const meetingsBadge = $("#bc-meetings-badge") as HTMLElement;
   const meetingsCount = $("#bc-meetings-count") as HTMLElement;
+  const busyTag = $("#bc-busy-tag") as HTMLElement;
   const slotEl = $("#bc-slot") as HTMLElement;
   const scheduleBtn = $<HTMLButtonElement>("#bc-schedule");
   const form = $("#bc-form") as HTMLElement;
@@ -225,6 +226,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       meetingsBadge.hidden = false;
       meetingsCount.textContent = String(n);
     }
+    busyTag.hidden = !facts.meeting.busy;
 
     if (!facts.suggestedSlot) return;
 
@@ -404,6 +406,17 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         agendaEl.appendChild(lbl);
       }
 
+      // "Now" line — visible only when the current time falls inside this
+      // window (i.e., the agenda is showing today around now).
+      const nowMs = Date.now();
+      if (nowMs >= winStart && nowMs <= winEnd) {
+        const topPx = ((nowMs - winStart) / 60000) * PX_PER_MIN;
+        const nowLine = document.createElement("div");
+        nowLine.className = "bc-tl-now";
+        nowLine.style.top = `${topPx}px`;
+        agendaEl.appendChild(nowLine);
+      }
+
       // Build layout items — events + the suggested slot — clipped to window
       const items: LayoutItem[] = [];
       for (const ev of events) {
@@ -436,10 +449,10 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
 
       const positioned = layoutColumns(items);
 
-      // 1px shaved off each block's bottom so consecutive events have a
-      // visible seam (e.g., "10:00 ends" → "10:00 starts" reads as two
-      // distinct events, not one taller one).
-      const BLOCK_GAP_PX = 1;
+      // 2px shaved off each block's bottom so consecutive events have a
+      // clear visible seam (e.g., "10:00 ends" → "10:00 starts" reads as
+      // two distinct events, not one taller one).
+      const BLOCK_GAP_PX = 2;
       for (const { item, column, columns } of positioned) {
         const topPx = ((item.startMs - winStart) / 60000) * PX_PER_MIN;
         const heightPx = Math.max(
@@ -856,6 +869,12 @@ const WIDGET_HTML = `
     border-bottom: 1px solid #f3f4f6;
   }
   #bc-header-text { flex: 1; min-width: 0; }
+  #bc-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
   #bc-name {
     font-size: 16px;
     font-weight: 600;
@@ -864,6 +883,19 @@ const WIDGET_HTML = `
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
+  }
+  #bc-busy-tag {
+    background: #dc2626;
+    color: #ffffff;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    flex-shrink: 0;
+    line-height: 1.2;
   }
   #bc-meetings-badge {
     display: flex;
@@ -1122,6 +1154,25 @@ const WIDGET_HTML = `
     transform: translateY(-50%);
     letter-spacing: -0.02em;
   }
+  .bc-tl-now {
+    position: absolute;
+    left: 28px;
+    right: 4px;
+    height: 0;
+    border-top: 1.5px solid #f97316;
+    z-index: 3;
+    pointer-events: none;
+  }
+  .bc-tl-now::before {
+    content: "";
+    position: absolute;
+    left: -4px;
+    top: -4px;
+    width: 6.5px;
+    height: 6.5px;
+    border-radius: 50%;
+    background: #f97316;
+  }
 
   .bc-ev {
     position: absolute;
@@ -1343,7 +1394,10 @@ const WIDGET_HTML = `
 <div id="bc-root" data-state="thinking" data-status="unknown">
   <div id="bc-header">
     <div id="bc-header-text">
-      <div id="bc-name"></div>
+      <div id="bc-name-row">
+        <span id="bc-name"></span>
+        <span id="bc-busy-tag" hidden>ocupado</span>
+      </div>
       <div id="bc-email"></div>
     </div>
     <div id="bc-meetings-badge" hidden>
