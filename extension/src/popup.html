@@ -6,6 +6,32 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
+    <!-- === Update banner (shown when backend reports a newer version) === -->
+    <div id="update-banner" class="update-banner" hidden>
+      <div class="update-banner-text">
+        <span class="update-banner-title">Atualização disponível</span>
+        <span class="update-banner-version" id="update-banner-version"></span>
+      </div>
+      <button id="update-now" type="button" class="update-banner-btn">
+        Atualizar
+      </button>
+    </div>
+
+    <!-- === Update instructions modal === -->
+    <div id="update-modal" class="update-modal" hidden>
+      <div class="update-modal-card">
+        <p class="update-modal-title">Quase lá</p>
+        <ol class="update-modal-steps">
+          <li>O zip foi baixado pra sua pasta de Downloads.</li>
+          <li>Extraia o arquivo.</li>
+          <li>Vá pra <code>chrome://extensions</code> (já abri pra você).</li>
+          <li>Remova o Toki antigo.</li>
+          <li>Clique em "Carregar sem compactação" e selecione a pasta extraída.</li>
+        </ol>
+        <button id="update-modal-close" type="button">Fechar</button>
+      </div>
+    </div>
+
     <!-- === HOME view === -->
     <section id="view-home" class="view">
       <header>

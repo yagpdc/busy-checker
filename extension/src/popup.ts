@@ -408,9 +408,78 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
+// === Update check ===
+// Fetched from the backend's /version endpoint. We compare the returned
+// `version` against `chrome.runtime.getManifest().version` and surface a
+// banner when newer. Click → download + open chrome://extensions + show
+// reinstall instructions modal.
+async function checkForUpdate(): Promise<void> {
+  let info: { version: string; downloadUrl: string } | null = null;
+  try {
+    const base =
+      // Lazy import via global to avoid pulling api.ts here — popup.ts
+      // doesn't need authenticated requests for /version.
+      "https://services.kipflow.io/busy-checker";
+    const res = await fetch(`${base}/version`, { cache: "no-cache" });
+    if (!res.ok) return;
+    info = (await res.json()) as { version: string; downloadUrl: string };
+  } catch {
+    return; // offline, backend down — ignore silently
+  }
+  const installed = chrome.runtime.getManifest().version;
+  if (!info || isUpToDate(installed, info.version)) return;
+
+  $<HTMLSpanElement>("update-banner-version").textContent = `v${installed} → v${info.version}`;
+  $<HTMLElement>("update-banner").hidden = false;
+
+  const btn = $<HTMLButtonElement>("update-now");
+  btn.onclick = async () => {
+    btn.disabled = true;
+    btn.textContent = "Baixando…";
+    try {
+      await new Promise<void>((resolve, reject) => {
+        chrome.downloads.download(
+          { url: info!.downloadUrl, filename: "toki-latest.zip" },
+          (id) => {
+            if (chrome.runtime.lastError || !id) {
+              reject(
+                new Error(chrome.runtime.lastError?.message ?? "download_failed"),
+              );
+            } else resolve();
+          },
+        );
+      });
+      chrome.tabs.create({ url: "chrome://extensions" });
+      $<HTMLElement>("update-modal").hidden = false;
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = "Atualizar";
+      showError(`Não consegui baixar: ${(err as Error).message}`);
+    }
+  };
+}
+
+// Semver-lite comparison good enough for our X.Y.Z extension versions.
+function isUpToDate(installed: string, latest: string): boolean {
+  const i = installed.split(".").map((n) => parseInt(n, 10) || 0);
+  const l = latest.split(".").map((n) => parseInt(n, 10) || 0);
+  for (let k = 0; k < Math.max(i.length, l.length); k++) {
+    const a = i[k] ?? 0;
+    const b = l[k] ?? 0;
+    if (a < b) return false;
+    if (a > b) return true; // local newer than server, treat as up-to-date
+  }
+  return true;
+}
+
+$<HTMLButtonElement>("update-modal-close").addEventListener("click", () => {
+  $<HTMLElement>("update-modal").hidden = true;
+});
+
 // === Bootstrap ===
 refreshUser();
 loadChatState();
+checkForUpdate();
 loadSettings().catch(() => {
   $<HTMLInputElement>("work-start").value = String(DEFAULT_SETTINGS.workStartHour);
   $<HTMLInputElement>("work-end").value = String(DEFAULT_SETTINGS.workEndHour);
