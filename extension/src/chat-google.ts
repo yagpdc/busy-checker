@@ -95,26 +95,20 @@ function formatTime(d: Date): string {
   });
 }
 
-function formatSlotParts(slot: Slot): { time: string; date: string } {
-  const start = new Date(slot.start);
-  const now = new Date();
+function formatCalendarParts(
+  when: Date,
+): { day: string; month: string; weekday: string } {
   const tz = "America/Sao_Paulo";
-  const time = formatTime(start);
-  const sameDay =
-    start.toLocaleDateString("pt-BR", { timeZone: tz }) ===
-    now.toLocaleDateString("pt-BR", { timeZone: tz });
-  const date = sameDay
-    ? "Hoje"
-    : start
-        .toLocaleDateString("pt-BR", {
-          timeZone: tz,
-          weekday: "long",
-          day: "2-digit",
-          month: "long",
-        })
-        // Capitalize the weekday for visual rhythm with the big time
-        .replace(/^./, (c) => c.toUpperCase());
-  return { time, date };
+  return {
+    day: when.toLocaleDateString("pt-BR", { timeZone: tz, day: "numeric" }),
+    month: when
+      .toLocaleDateString("pt-BR", { timeZone: tz, month: "short" })
+      .replace(/\./g, "")
+      .toUpperCase(),
+    weekday: when
+      .toLocaleDateString("pt-BR", { timeZone: tz, weekday: "short" })
+      .replace(/\./g, ""),
+  };
 }
 
 const DURATION_OPTIONS_MIN = [15, 30, 45, 60, 90, 120];
@@ -186,40 +180,54 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     let noMoreSlots = false;
     const prevBtn = $<HTMLButtonElement>("#bc-slot-prev");
     const nextBtn = $<HTMLButtonElement>("#bc-slot-next");
-    const slotDate = $("#bc-slot-date") as HTMLElement;
+    const slotDay = $("#bc-cal-day") as HTMLElement;
+    const slotMonth = $("#bc-cal-month") as HTMLElement;
+    const slotWeekday = $("#bc-slot-weekday") as HTMLElement;
 
     // The time displayed right now (may differ from currentSlot.start while
     // animating). Used as the "from" point when chaining nav clicks mid-flight.
     let displayedTime = new Date(currentSlot.start);
     let timeAnimHandle: number | null = null;
 
-    // Smoothly ticks the visible time from `from` to `to` with an ease-in-out
-    // cubic curve. Looks like a flip-clock cycling through minutes.
+    const writeCalendar = (when: Date) => {
+      const { day, month, weekday } = formatCalendarParts(when);
+      if (slotDay.textContent !== day) slotDay.textContent = day;
+      if (slotMonth.textContent !== month) slotMonth.textContent = month;
+      if (slotWeekday.textContent !== weekday) slotWeekday.textContent = weekday;
+    };
+
+    // Smoothly ticks the visible time + calendar from `from` to `to` with an
+    // ease-in-out cubic curve. Looks like a flip-clock cycling through minutes
+    // and (when it crosses midnight) flipping the day card too.
     const animateTimeTo = (from: Date, to: Date) => {
       if (timeAnimHandle !== null) cancelAnimationFrame(timeAnimHandle);
       const startMs = from.getTime();
       const endMs = to.getTime();
       const diffAbsMin = Math.abs(endMs - startMs) / 60000;
-      // 300ms floor for tiny jumps; 750ms ceiling for multi-day. Sqrt scales
-      // so 3h reads as quicker than 3 days, without being proportional.
-      const duration = Math.min(750, Math.max(300, 200 + Math.sqrt(diffAbsMin) * 20));
+      // Slightly more deliberate pacing than before: 500ms floor, 1300ms cap.
+      const duration = Math.min(
+        1300,
+        Math.max(500, 350 + Math.sqrt(diffAbsMin) * 35),
+      );
       const startPerf = performance.now();
       const tick = (now: number) => {
         const raw = Math.min(1, (now - startPerf) / duration);
-        // ease-in-out cubic: slow start, accelerate, decelerate to land
-        const eased = raw < 0.5
-          ? 4 * raw * raw * raw
-          : 1 - Math.pow(-2 * raw + 2, 3) / 2;
+        const eased =
+          raw < 0.5
+            ? 4 * raw * raw * raw
+            : 1 - Math.pow(-2 * raw + 2, 3) / 2;
         const currentMs = startMs + (endMs - startMs) * eased;
         const current = new Date(currentMs);
         displayedTime = current;
         slotTime.textContent = formatTime(current);
+        writeCalendar(current);
         if (raw < 1) {
           timeAnimHandle = requestAnimationFrame(tick);
         } else {
           timeAnimHandle = null;
           displayedTime = to;
           slotTime.textContent = formatTime(to);
+          writeCalendar(to);
         }
       };
       timeAnimHandle = requestAnimationFrame(tick);
@@ -232,14 +240,12 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       const end = new Date(slot.end);
       const gapMin = Math.floor((end.getTime() - start.getTime()) / 60000);
 
-      const { date } = formatSlotParts(slot);
-      slotDate.textContent = date;
-
       if (fromTime) {
         animateTimeTo(fromTime, start);
       } else {
         if (timeAnimHandle !== null) cancelAnimationFrame(timeAnimHandle);
         slotTime.textContent = formatTime(start);
+        writeCalendar(start);
         displayedTime = start;
       }
       const durText =
@@ -571,17 +577,15 @@ const WIDGET_HTML = `
     from { opacity: 0; transform: translateY(-4px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  /* The time itself animates digit-by-digit in JS (flip-clock ticking).
+  /* The time + calendar tick frame-by-frame in JS (flip-clock).
      The supporting elements just slide in/out directionally. */
-  #bc-slot[data-flash="next"] #bc-slot-date,
   #bc-slot[data-flash="next"] #bc-slot-hint,
   #bc-slot[data-flash="next"] #bc-dur-row {
-    animation: bc-flash-up 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: bc-flash-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
-  #bc-slot[data-flash="prev"] #bc-slot-date,
   #bc-slot[data-flash="prev"] #bc-slot-hint,
   #bc-slot[data-flash="prev"] #bc-dur-row {
-    animation: bc-flash-down 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: bc-flash-down 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
   @keyframes bc-flash-up {
     from { opacity: 0; transform: translateY(10px); }
@@ -592,17 +596,66 @@ const WIDGET_HTML = `
     to   { opacity: 1; transform: translateY(0); }
   }
   /* Stagger so the supporting info comes in after the ticking starts */
-  #bc-slot[data-flash] #bc-slot-date { animation-delay: 0.10s; }
-  #bc-slot[data-flash] #bc-slot-hint { animation-delay: 0.14s; }
-  #bc-slot[data-flash] #bc-dur-row   { animation-delay: 0.18s; }
+  #bc-slot[data-flash] #bc-slot-hint { animation-delay: 0.18s; }
+  #bc-slot[data-flash] #bc-dur-row   { animation-delay: 0.26s; }
 
   #bc-slot-head {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
   }
-  #bc-slot-display { flex: 1; min-width: 0; }
+  #bc-slot-display {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  /* === Calendar tile === */
+  #bc-cal {
+    width: 56px;
+    height: 56px;
+    border-radius: 9px;
+    overflow: hidden;
+    border: 1px solid #d4d4d8;
+    background: #ffffff;
+    flex-shrink: 0;
+    box-shadow:
+      0 1px 2px rgba(0,0,0,0.05),
+      inset 0 -1px 0 rgba(0,0,0,0.02);
+    display: flex;
+    flex-direction: column;
+  }
+  #bc-cal-month {
+    background: #18181b;
+    color: #fafafa;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.10em;
+    text-align: center;
+    padding: 4px 0 3px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  #bc-cal-day {
+    flex: 1;
+    font-size: 26px;
+    font-weight: 500;
+    letter-spacing: -0.03em;
+    color: #18181b;
+    text-align: center;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" on, "lnum" on;
+    background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+  }
+
+  #bc-time-block { min-width: 0; }
   #bc-slot-nav { display: flex; gap: 2px; }
   #bc-slot-nav {
     display: flex;
@@ -636,25 +689,26 @@ const WIDGET_HTML = `
     cursor: not-allowed;
   }
   #bc-slot-time {
-    font-size: 38px;
+    font-size: 30px;
     font-weight: 300;
-    letter-spacing: -0.04em;
+    letter-spacing: -0.035em;
     line-height: 1;
     color: #111827;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" on, "lnum" on;
   }
-  #bc-slot-date {
+  #bc-slot-weekday {
     font-size: 12px;
     color: #6b7280;
     margin-top: 6px;
     font-weight: 400;
     letter-spacing: -0.01em;
+    text-transform: lowercase;
   }
   #bc-slot-hint {
     font-size: 11px;
     color: #9ca3af;
-    margin-top: 10px;
+    margin-top: 12px;
     font-weight: 400;
     font-variant-numeric: tabular-nums;
   }
@@ -826,8 +880,14 @@ const WIDGET_HTML = `
     <div id="bc-slot" hidden>
       <div id="bc-slot-head">
         <div id="bc-slot-display">
-          <div id="bc-slot-time"></div>
-          <div id="bc-slot-date"></div>
+          <div id="bc-cal" aria-hidden="true">
+            <div id="bc-cal-month"></div>
+            <div id="bc-cal-day"></div>
+          </div>
+          <div id="bc-time-block">
+            <div id="bc-slot-time"></div>
+            <div id="bc-slot-weekday"></div>
+          </div>
         </div>
         <div id="bc-slot-nav">
           <button id="bc-slot-prev" type="button" title="janela anterior" disabled>↑</button>
