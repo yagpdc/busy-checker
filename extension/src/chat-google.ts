@@ -86,6 +86,18 @@ function setInnerHTML(el: Element | ShadowRoot, html: string): void {
   el.appendChild(frag);
 }
 
+const LOADING_PHRASES = [
+  "時間を整理しています...",
+  "Só mais alguns segundos",
+  "Carregando o futuro",
+  "Harmonizando agendas",
+  "Processando eventos",
+  "Preparando sua próxima reunião...",
+];
+function pickLoadingPhrase(): string {
+  return LOADING_PHRASES[Math.floor(Math.random() * LOADING_PHRASES.length)];
+}
+
 function textColorFor(hex: string): string {
   let h = hex.replace("#", "");
   if (h.length === 3) h = h.split("").map((c) => c + c).join("");
@@ -150,6 +162,7 @@ function openWidget(name: string): void {
   const $ = <T extends Element = HTMLElement>(sel: string) =>
     shadow.querySelector(sel) as T;
   ($("#bc-name") as HTMLElement).textContent = name;
+  ($(".bc-loading-text") as HTMLElement).textContent = pickLoadingPhrase();
   $<HTMLButtonElement>("#bc-close").addEventListener("click", removeWidget);
   // Suppress event propagation so clicks inside the widget never trigger
   // Chat's own handlers.
@@ -971,6 +984,54 @@ const WIDGET_HTML = `
 
   #bc-body { padding: 10px 12px 12px; }
 
+  /* === Loading state (kanji + phrase + clock spinner) === */
+  #bc-loading {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 4px;
+    animation: bc-loading-in 0.3s ease-out;
+  }
+  @keyframes bc-loading-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  #bc-root[data-state="ok"] #bc-loading,
+  #bc-root[data-state="error"] #bc-loading {
+    display: none;
+  }
+  .bc-loading-kanji {
+    font-family: "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP",
+      "Noto Serif CJK JP", "MS Mincho", "Songti SC", serif;
+    font-size: 36px;
+    color: #111827;
+    font-weight: 500;
+    line-height: 1;
+    flex-shrink: 0;
+    letter-spacing: -0.02em;
+  }
+  .bc-loading-text {
+    flex: 1;
+    font-size: 12.5px;
+    color: #6b7280;
+    font-style: italic;
+    letter-spacing: -0.01em;
+    line-height: 1.4;
+    min-width: 0;
+  }
+  .bc-loading-spinner {
+    width: 16px;
+    height: 16px;
+    color: #9ca3af;
+    flex-shrink: 0;
+    animation: bc-spin 2.5s linear infinite;
+    transform-origin: center;
+  }
+  @keyframes bc-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
   /* status row removed — status is implicit in the timeline below */
 
   #bc-email {
@@ -1455,6 +1516,14 @@ const WIDGET_HTML = `
     <button id="bc-close" aria-label="fechar">×</button>
   </div>
   <div id="bc-body">
+    <div id="bc-loading">
+      <span class="bc-loading-kanji">時</span>
+      <span class="bc-loading-text"></span>
+      <svg class="bc-loading-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"/>
+        <polyline points="12 6 12 12 16 14"/>
+      </svg>
+    </div>
     <div id="bc-slot" hidden>
       <div id="bc-days">
         <button id="bc-day-prev" class="bc-day-side" type="button" disabled></button>
