@@ -460,13 +460,23 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         intraFetching || (!hasCachedNext && day.fullyFetched);
     };
 
-    const prefetchNextDay = async () => {
-      if (entries[dayCursor + 1] || noMoreDays || nextDayFetching) return;
+    // How many days to keep cached AHEAD of the current cursor. Bigger →
+    // smoother → button always finds data already in memory.
+    const PREFETCH_LOOKAHEAD_DAYS = 3;
+
+    // Fetches exactly one more day, anchored at the latest cached entry.
+    const prefetchOneDay = async (): Promise<void> => {
+      if (noMoreDays || nextDayFetching) return;
       nextDayFetching = true;
       updateSideLabels();
       try {
+        // Anchor at the LAST cached entry's last known slot — not the
+        // currently displayed slot — so successive prefetches chain
+        // through future days instead of refetching the same one.
+        const tail = entries[entries.length - 1];
+        const tailSlot = tail.slots[tail.slots.length - 1];
         const after = nextSpDayMidnight(
-          new Date(currentSlot.start),
+          new Date(tailSlot.start),
         ).toISOString();
         const res = await chrome.runtime.sendMessage({
           type: "nextSlot",
@@ -495,6 +505,29 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         updateSideLabels();
       }
     };
+
+    // Keeps fetching one day at a time until we have PREFETCH_LOOKAHEAD_DAYS
+    // ahead of the current cursor, or we run out of slots.
+    const prefetchUntilFull = async (): Promise<void> => {
+      while (
+        entries.length - 1 - dayCursor < PREFETCH_LOOKAHEAD_DAYS &&
+        !noMoreDays
+      ) {
+        if (nextDayFetching) {
+          // Another call is in flight; wait for it to finish then re-check.
+          await new Promise<void>((resolve) => {
+            const tick = () =>
+              nextDayFetching ? setTimeout(tick, 30) : resolve();
+            tick();
+          });
+          continue;
+        }
+        await prefetchOneDay();
+      }
+    };
+
+    // Backwards-compatible alias for older call sites
+    const prefetchNextDay = prefetchUntilFull;
 
     // Tries to fetch the next free slot AFTER the current day's last
     // known slot. If it lands on the same day, append it. If it lands on
