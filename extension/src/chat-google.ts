@@ -573,15 +573,6 @@ const WIDGET_HTML = `
 
   #bc-slot {
     margin-top: 14px;
-    padding: 14px;
-    background: #fafafa;
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    transition: background 0.2s ease, border-color 0.2s ease;
-  }
-  #bc-slot:hover {
-    background: #f5f5f5;
-    border-color: #d1d5db;
   }
   #bc-slot:not([hidden]) {
     animation: bc-section-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
@@ -590,8 +581,8 @@ const WIDGET_HTML = `
     from { opacity: 0; transform: translateY(-4px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  /* The time + calendar tick frame-by-frame in JS (flip-clock).
-     The supporting elements just slide in/out directionally. */
+  /* Time + calendar tick frame-by-frame in JS. Supporting elements
+     slide in/out directionally. */
   #bc-slot[data-flash="next"] #bc-slot-hint,
   #bc-slot[data-flash="next"] #bc-dur-row {
     animation: bc-flash-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -608,7 +599,6 @@ const WIDGET_HTML = `
     from { opacity: 0; transform: translateY(-10px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  /* Stagger so the supporting info comes in after the ticking starts */
   #bc-slot[data-flash] #bc-slot-hint { animation-delay: 0.18s; }
   #bc-slot[data-flash] #bc-dur-row   { animation-delay: 0.26s; }
 
@@ -616,74 +606,86 @@ const WIDGET_HTML = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    margin-bottom: 8px;
   }
-  #bc-slot-display {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 14px;
+  #bc-slot-section {
+    font-size: 11px;
+    color: #6b7280;
+    font-weight: 500;
+    letter-spacing: -0.01em;
   }
 
-  /* === Calendar tile === */
-  #bc-cal {
-    width: 56px;
-    height: 56px;
-    border-radius: 9px;
-    overflow: hidden;
-    border: 1px solid #d4d4d8;
-    background: #ffffff;
-    flex-shrink: 0;
-    box-shadow:
-      0 1px 2px rgba(0,0,0,0.05),
-      inset 0 -1px 0 rgba(0,0,0,0.02);
-    display: flex;
-    flex-direction: column;
+  /* === Tiles row === */
+  #bc-tiles {
+    display: grid;
+    grid-template-columns: 76px 1fr;
+    gap: 8px;
   }
-  #bc-cal-month {
+  .bc-tile {
     background: #18181b;
     color: #fafafa;
-    font-size: 9px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  }
+  #bc-tile-date {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
+  }
+  #bc-cal-month {
+    color: #ef4444;
+    font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.10em;
-    text-align: center;
-    padding: 4px 0 3px;
+    text-align: left;
+    padding: 8px 10px 0;
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }
   #bc-cal-day {
     flex: 1;
-    font-size: 26px;
+    font-size: 32px;
     font-weight: 500;
-    letter-spacing: -0.03em;
-    color: #18181b;
-    text-align: center;
+    letter-spacing: -0.04em;
+    color: #fafafa;
+    text-align: left;
     line-height: 1;
+    padding: 4px 10px 0;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" on, "lnum" on;
+  }
+  #bc-slot-weekday {
+    font-size: 10px;
+    color: #a1a1aa;
+    padding: 0 10px 8px;
+    letter-spacing: -0.01em;
+    text-transform: lowercase;
+  }
+
+  #bc-tile-time {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" on, "lnum" on;
-    background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+    padding: 14px 16px;
+    min-height: 76px;
   }
-
-  #bc-time-block { min-width: 0; }
   #bc-slot-nav { display: flex; gap: 2px; }
   #bc-slot-nav {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 4px;
     flex-shrink: 0;
   }
   #bc-slot-nav button {
     background: transparent;
     border: 1px solid #e5e7eb;
-    color: #9ca3af;
+    color: #6b7280;
     width: 26px;
     height: 26px;
     border-radius: 6px;
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1;
     cursor: pointer;
     padding: 0;
@@ -704,28 +706,19 @@ const WIDGET_HTML = `
   #bc-slot-time {
     font-family: "BC-Digital", ui-monospace, "SF Mono", "JetBrains Mono",
       Consolas, Menlo, monospace;
-    font-size: 56px;
+    font-size: 44px;
     font-weight: normal;
-    letter-spacing: -0.02em;
+    letter-spacing: 0;
     line-height: 1;
-    color: #111827;
+    color: #fafafa;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" on, "lnum" on;
-    /* DSEG renders with some natural slant — keep it crisp */
     -webkit-font-smoothing: antialiased;
-  }
-  #bc-slot-weekday {
-    font-size: 12px;
-    color: #6b7280;
-    margin-top: 6px;
-    font-weight: 400;
-    letter-spacing: -0.01em;
-    text-transform: lowercase;
   }
   #bc-slot-hint {
     font-size: 11px;
     color: #9ca3af;
-    margin-top: 12px;
+    margin-top: 10px;
     font-weight: 400;
     font-variant-numeric: tabular-nums;
   }
@@ -896,19 +889,20 @@ const WIDGET_HTML = `
     <p id="bc-reply">consultando agenda</p>
     <div id="bc-slot" hidden>
       <div id="bc-slot-head">
-        <div id="bc-slot-display">
-          <div id="bc-cal" aria-hidden="true">
-            <div id="bc-cal-month"></div>
-            <div id="bc-cal-day"></div>
-          </div>
-          <div id="bc-time-block">
-            <div id="bc-slot-time"></div>
-            <div id="bc-slot-weekday"></div>
-          </div>
-        </div>
+        <span id="bc-slot-section">Próxima janela</span>
         <div id="bc-slot-nav">
-          <button id="bc-slot-prev" type="button" title="janela anterior" disabled>↑</button>
-          <button id="bc-slot-next" type="button" title="próxima janela">↓</button>
+          <button id="bc-slot-prev" type="button" title="janela anterior" disabled>←</button>
+          <button id="bc-slot-next" type="button" title="próxima janela">→</button>
+        </div>
+      </div>
+      <div id="bc-tiles">
+        <div id="bc-tile-date" class="bc-tile" aria-hidden="true">
+          <div id="bc-cal-month"></div>
+          <div id="bc-cal-day"></div>
+          <div id="bc-slot-weekday"></div>
+        </div>
+        <div id="bc-tile-time" class="bc-tile">
+          <div id="bc-slot-time"></div>
         </div>
       </div>
       <div id="bc-slot-hint"></div>
