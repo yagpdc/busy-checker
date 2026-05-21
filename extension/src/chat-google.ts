@@ -53,7 +53,20 @@ function openWidget(name: string): void {
   host.style.cssText =
     "all:initial;position:fixed!important;bottom:24px!important;right:24px!important;z-index:2147483647!important;";
   const shadow = host.attachShadow({ mode: "open" });
-  shadow.innerHTML = WIDGET_HTML;
+  // Inject @font-face pointing at the bundled DSEG7 woff2. We compute the
+  // chrome-extension:// URL at runtime because the extension ID is only
+  // known at runtime and shadow DOM stylesheets need an absolute URL.
+  const fontUrl = chrome.runtime.getURL("fonts/DSEG7Modern-Light.woff2");
+  shadow.innerHTML =
+    `<style>
+      @font-face {
+        font-family: "BC-Digital";
+        src: url("${fontUrl}") format("woff2");
+        font-display: swap;
+        font-weight: normal;
+        font-style: normal;
+      }
+    </style>` + WIDGET_HTML;
   (document.documentElement || document.body).appendChild(host);
 
   const $ = <T extends Element = HTMLElement>(sel: string) =>
@@ -689,13 +702,17 @@ const WIDGET_HTML = `
     cursor: not-allowed;
   }
   #bc-slot-time {
-    font-size: 30px;
-    font-weight: 300;
-    letter-spacing: -0.035em;
+    font-family: "BC-Digital", ui-monospace, "SF Mono", "JetBrains Mono",
+      Consolas, Menlo, monospace;
+    font-size: 56px;
+    font-weight: normal;
+    letter-spacing: -0.02em;
     line-height: 1;
     color: #111827;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" on, "lnum" on;
+    /* DSEG renders with some natural slant — keep it crisp */
+    -webkit-font-smoothing: antialiased;
   }
   #bc-slot-weekday {
     font-size: 12px;

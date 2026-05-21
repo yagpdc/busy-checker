@@ -25,5 +25,11 @@
       "js": ["chat-google.js"],
       "run_at": "document_idle"
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["fonts/*"],
+      "matches": ["https://chat.google.com/*"]
+    }
   ]
 }
