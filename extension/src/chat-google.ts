@@ -694,18 +694,18 @@ const WIDGET_HTML = `
   }
   .bc-day-side {
     font: inherit;
-    font-size: 11px;
-    font-weight: 400;
+    font-size: 12px;
+    font-weight: 500;
     color: #d4d4d8;
     background: none;
     border: 0;
     padding: 4px 6px;
     cursor: pointer;
-    letter-spacing: -0.01em;
-    text-transform: lowercase;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     transition: color 0.15s ease, opacity 0.2s ease;
     font-variant-numeric: tabular-nums;
-    min-width: 44px;
+    min-width: 56px;
     text-align: center;
   }
   .bc-day-side:hover:not(:disabled) { color: #6b7280; }
@@ -716,11 +716,11 @@ const WIDGET_HTML = `
   #bc-day-prev { text-align: left; }
   #bc-day-next { text-align: right; }
   .bc-day-c {
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 600;
     color: #111827;
-    letter-spacing: -0.01em;
-    text-transform: lowercase;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     transition: opacity 0.2s ease;
   }
   /* When animating between slots, slightly mute the center so the
