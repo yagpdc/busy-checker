@@ -424,10 +424,24 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
   const success = $("#bc-success") as HTMLElement;
 
   try {
-    const res = await chrome.runtime.sendMessage({
+    // Hard timeout so the widget can't sit on the loading state forever.
+    // The common cause: the user reloaded/updated the extension while
+    // this tab was open, so the content script is now orphaned —
+    // chrome.runtime.sendMessage neither resolves nor rejects.
+    const sendPromise = chrome.runtime.sendMessage({
       type: "query",
       targetName: name,
     });
+    const timeoutPromise = new Promise<never>((_, rej) =>
+      setTimeout(
+        () => rej(new Error("widget_query_timeout_20s")),
+        20_000,
+      ),
+    );
+    const res = (await Promise.race([sendPromise, timeoutPromise])) as
+      | { ok: true; data: unknown }
+      | { ok: false; error: string }
+      | undefined;
     if (!res?.ok) throw new Error(res?.error ?? "unknown_error");
 
     const { facts } = res.data as {
@@ -1092,9 +1106,19 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     });
   } catch (err) {
     const msg = (err as Error).message;
-    if (msg.includes("Extension context invalidated")) return;
     root.dataset.state = "error";
-    emailEl.textContent = msg;
+    // Context invalidated = the user just updated/reloaded the extension
+    // and this content script is orphaned. The user needs to F5 the tab
+    // for a fresh script to mount. Same useful message for the timeout
+    // case since the visible symptom is identical (stuck loading).
+    if (
+      msg.includes("Extension context invalidated") ||
+      msg.includes("widget_query_timeout")
+    ) {
+      emailEl.textContent = "Recarregue a aba (F5) para atualizar.";
+    } else {
+      emailEl.textContent = msg;
+    }
   }
 }
 
