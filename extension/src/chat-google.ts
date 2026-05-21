@@ -322,9 +322,10 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     // events are absolutely positioned by their start time, height is
     // proportional to duration, and the suggested slot is drawn as a
     // dashed empty block in chronological position.
-    const PX_PER_MIN = 0.95; // ~57 px per hour
+    const PX_PER_MIN = 0.85; // ~51 px per hour
     const WINDOW_RANGE_MS = 2.5 * 60 * 60 * 1000; // ±2.5h around slot
-    const MIN_EVENT_HEIGHT = 28; // keep text readable on short events
+    const MIN_EVENT_HEIGHT = 16; // floor so micro-events still show some text
+    const COMPACT_THRESHOLD = 28; // below this, use inline layout
 
     const renderAgenda = (slot: Slot, events: CalendarEvent[]) => {
       agendaEl.innerHTML = "";
@@ -369,14 +370,15 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         );
         const block = document.createElement("div");
         block.className = "bc-ev";
+        block.dataset.compact = heightPx < COMPACT_THRESHOLD ? "true" : "false";
         block.style.top = `${topPx}px`;
         block.style.height = `${heightPx}px`;
         block.style.background = eventColor;
         block.style.color = eventTextColor;
         const titleText = (ev.title ?? "").trim() || "(sem título)";
         block.innerHTML = `
-          <div class="bc-ev-time"></div>
-          <div class="bc-ev-title"></div>
+          <span class="bc-ev-time"></span>
+          <span class="bc-ev-title"></span>
         `;
         (block.querySelector(".bc-ev-time") as HTMLElement).textContent =
           formatTime(new Date(eStart));
@@ -399,11 +401,13 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
           : `slot livre · ${slotMin}min`;
       const slotBlock = document.createElement("div");
       slotBlock.className = "bc-ev bc-ev-slot";
+      slotBlock.dataset.compact =
+        slotHeightPx < COMPACT_THRESHOLD ? "true" : "false";
       slotBlock.style.top = `${slotTopPx}px`;
       slotBlock.style.height = `${slotHeightPx}px`;
       slotBlock.innerHTML = `
-        <div class="bc-ev-time"></div>
-        <div class="bc-ev-title"></div>
+        <span class="bc-ev-time"></span>
+        <span class="bc-ev-title"></span>
       `;
       (slotBlock.querySelector(".bc-ev-time") as HTMLElement).textContent =
         formatTime(new Date(slotStartMs));
@@ -800,7 +804,7 @@ const WIDGET_HTML = `
   }
   #bc-close:hover { background: #f3f4f6; color: #374151; }
 
-  #bc-body { padding: 14px; }
+  #bc-body { padding: 10px 12px 12px; }
 
   /* status row removed — status is implicit in the timeline below */
 
@@ -814,7 +818,7 @@ const WIDGET_HTML = `
   }
 
   #bc-slot {
-    margin-top: 14px;
+    margin-top: 0;
   }
   #bc-slot:not([hidden]) {
     animation: bc-section-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
@@ -830,7 +834,7 @@ const WIDGET_HTML = `
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   .bc-day-side {
     font: inherit;
@@ -886,7 +890,7 @@ const WIDGET_HTML = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin: 4px 0 14px;
+    margin: 2px 0 8px;
   }
 
   /* Calendar tile (date) */
@@ -998,21 +1002,21 @@ const WIDGET_HTML = `
     border-radius: 8px;
     overflow: hidden;
     transition: opacity 0.18s ease;
-    padding-left: 36px; /* leaves space for hour labels */
+    padding-left: 30px; /* room for hour labels */
   }
   #bc-slot[data-fading="true"] #bc-agenda { opacity: 0; }
 
   .bc-tl-line {
     position: absolute;
-    left: 36px;
-    right: 6px;
+    left: 30px;
+    right: 4px;
     height: 1px;
     background: rgba(0,0,0,0.05);
   }
   .bc-tl-hour {
     position: absolute;
-    left: 6px;
-    width: 30px;
+    left: 4px;
+    width: 24px;
     font-size: 9px;
     color: #9ca3af;
     font-variant-numeric: tabular-nums;
@@ -1022,36 +1026,62 @@ const WIDGET_HTML = `
 
   .bc-ev {
     position: absolute;
-    left: 38px;
-    right: 6px;
-    padding: 3px 8px;
-    border-radius: 5px;
+    left: 32px;
+    right: 4px;
+    border-radius: 4px;
     overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    gap: 1px;
     box-shadow: 0 1px 2px rgba(0,0,0,0.06);
   }
-  .bc-ev-time {
-    font-size: 10px;
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" on;
-    letter-spacing: -0.02em;
-    opacity: 0.85;
-    line-height: 1.15;
+  /* Comfortable: two-line layout with time on top, title below */
+  .bc-ev[data-compact="false"] {
+    padding: 3px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
   }
-  .bc-ev-title {
+  .bc-ev[data-compact="false"] .bc-ev-time {
+    font-size: 10px;
+    opacity: 0.85;
+    line-height: 1.1;
+  }
+  .bc-ev[data-compact="false"] .bc-ev-title {
     font-size: 11px;
     font-weight: 600;
     line-height: 1.2;
-    letter-spacing: -0.01em;
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
-    white-space: normal;
+  }
+  /* Compact: short events get a single inline line "10am Title" */
+  .bc-ev[data-compact="true"] {
+    padding: 2px 6px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+  .bc-ev[data-compact="true"] .bc-ev-time {
+    font-size: 9px;
+    font-weight: 600;
+    opacity: 0.85;
+    flex-shrink: 0;
+  }
+  .bc-ev[data-compact="true"] .bc-ev-title {
+    font-size: 10px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .bc-ev-time {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" on;
+    letter-spacing: -0.02em;
+  }
+  .bc-ev-title {
+    letter-spacing: -0.01em;
   }
   /* Slot: transparent + dashed border, dark text */
   .bc-ev.bc-ev-slot {
