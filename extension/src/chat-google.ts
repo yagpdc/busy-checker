@@ -136,14 +136,16 @@ function textColorFor(hex: string): string {
 // for "which conversation is open."
 let widgetPath: string | null = null;
 
-// Returns true only for 1:1 Direct Messages. Spaces / rooms / meeting
-// chats live at /space/ or /room/ URLs and never get the widget.
+// Returns true when we're inside a conversation page on Chat. The URL
+// scheme `/app/chat/<id>` is shared between DMs and meeting/group chats,
+// so the URL check is necessary-but-not-sufficient — currentConversationName()
+// applies the title-based filters (no comma → no group DM, no digit/"reunião"
+// → no meeting room) that actually distinguish a 1:1 from everything else.
 //
-// Use the full URL because Google routes some chats through hash fragments
-// (the Gmail-embedded variant) — `/dm/` doesn't always show up in
-// location.pathname.
+// Older `/dm/<id>` paths are kept in the regex as a safety net in case
+// some surfaces still route through that scheme.
 function isDirectMessageUrl(): boolean {
-  return /\/dm\//.test(location.href);
+  return /\/(app\/chat|dm)\//.test(location.href);
 }
 
 function currentConversationName(): string | null {
