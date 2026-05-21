@@ -229,24 +229,44 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     if (!facts.suggestedSlot) return;
 
     // === Slot navigation state ===
-    type Entry = { slot: Slot; events: CalendarEvent[] };
-    const entries: Entry[] = [
-      { slot: facts.suggestedSlot, events: facts.eventsAround ?? [] },
+    // entries is one DayEntry per distinct day. Each day holds its known
+    // free slots (loaded lazily as the user presses ↓) plus the day's
+    // events. dayCursor selects the day; slotCursor selects which free
+    // window within that day we're showing.
+    type DayEntry = {
+      slots: Slot[];
+      events: CalendarEvent[];
+      fullyFetched: boolean;
+    };
+    const entries: DayEntry[] = [
+      {
+        slots: [facts.suggestedSlot],
+        events: facts.eventsAround ?? [],
+        fullyFetched: false,
+      },
     ];
-    let cursor = 0;
-    let currentSlot = entries[cursor].slot;
+    let dayCursor = 0;
+    let slotCursor = 0;
+    let currentSlot = entries[dayCursor].slots[slotCursor];
     let selectedDur = 30;
-    let noMoreSlots = false;
-    let nextFetching = false;
+    let noMoreDays = false;
+    let nextDayFetching = false;
+    let intraFetching = false;
 
     const prevBtn = $<HTMLButtonElement>("#bc-day-prev");
     const nextBtn = $<HTMLButtonElement>("#bc-day-next");
+    const upBtn = $<HTMLButtonElement>("#bc-slot-up");
+    const downBtn = $<HTMLButtonElement>("#bc-slot-down");
     const dayCenter = $("#bc-day-center") as HTMLElement;
     const calMonth = $("#bc-cal-month") as HTMLElement;
     const calDay = $("#bc-cal-day") as HTMLElement;
     const hourEl = $("#bc-time-hour") as HTMLElement;
     const minEl = $("#bc-time-minute") as HTMLElement;
     const agendaEl = $("#bc-agenda") as HTMLElement;
+
+    const sameSpDay = (a: Date, b: Date) =>
+      a.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }) ===
+      b.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
     let displayedTime = new Date(currentSlot.start);
     let timeAnimHandle: number | null = null;
@@ -401,11 +421,11 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     };
 
     const updateSideLabels = () => {
-      const prev = entries[cursor - 1];
-      const next = entries[cursor + 1];
+      const prev = entries[dayCursor - 1];
+      const next = entries[dayCursor + 1];
       if (prev) {
         prevBtn.textContent = formatCalendarParts(
-          new Date(prev.slot.start),
+          new Date(prev.slots[0].start),
         ).weekday;
         prevBtn.disabled = false;
       } else {
@@ -414,26 +434,33 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       }
       if (next) {
         nextBtn.textContent = formatCalendarParts(
-          new Date(next.slot.start),
+          new Date(next.slots[0].start),
         ).weekday;
         nextBtn.disabled = false;
-      } else if (noMoreSlots) {
+      } else if (noMoreDays) {
         nextBtn.textContent = "—";
         nextBtn.disabled = true;
       } else {
-        nextBtn.textContent = nextFetching ? "…" : "→";
-        nextBtn.disabled = nextFetching;
+        nextBtn.textContent = nextDayFetching ? "…" : "→";
+        nextBtn.disabled = nextDayFetching;
       }
     };
 
-    const prefetchNext = async () => {
-      if (entries[cursor + 1] || noMoreSlots || nextFetching) return;
-      nextFetching = true;
+    const updateIntraButtons = () => {
+      const day = entries[dayCursor];
+      upBtn.disabled = slotCursor === 0;
+      // ↓ enabled if there's a cached next slot in this day OR we haven't
+      // yet exhausted the day's slots.
+      const hasCachedNext = slotCursor < day.slots.length - 1;
+      downBtn.disabled =
+        intraFetching || (!hasCachedNext && day.fullyFetched);
+    };
+
+    const prefetchNextDay = async () => {
+      if (entries[dayCursor + 1] || noMoreDays || nextDayFetching) return;
+      nextDayFetching = true;
       updateSideLabels();
       try {
-        // Day-based navigation: jump to midnight of the next SP day so the
-        // returned slot is the FIRST free window on a DIFFERENT day (skips
-        // any remaining slots on the current day).
         const after = nextSpDayMidnight(
           new Date(currentSlot.start),
         ).toISOString();
@@ -447,33 +474,95 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
             slot: Slot | null;
             eventsAround: CalendarEvent[];
           };
-          if (slot) entries.push({ slot, events: nextEvents ?? [] });
-          else noMoreSlots = true;
+          if (slot) {
+            entries.push({
+              slots: [slot],
+              events: nextEvents ?? [],
+              fullyFetched: false,
+            });
+          } else {
+            noMoreDays = true;
+          }
         }
       } catch (err) {
         console.error("[busy-checker] prefetch failed", err);
       } finally {
-        nextFetching = false;
+        nextDayFetching = false;
         updateSideLabels();
       }
     };
 
-    const renderSlot = (entry: Entry, animateTime = false) => {
+    // Tries to fetch the next free slot AFTER the current day's last
+    // known slot. If it lands on the same day, append it. If it lands on
+    // a different day, mark the current day as fully fetched (and also
+    // cache that next-day entry so ← → already know what's there).
+    const fetchNextIntraSlot = async (): Promise<Slot | null> => {
+      const day = entries[dayCursor];
+      if (day.fullyFetched || intraFetching) return null;
+      intraFetching = true;
+      updateIntraButtons();
+      const dayStart = new Date(day.slots[0].start);
+      const lastEnd = day.slots[day.slots.length - 1].end;
+      try {
+        const res = await chrome.runtime.sendMessage({
+          type: "nextSlot",
+          targetEmail: facts.targetEmail,
+          after: lastEnd,
+        });
+        if (!res?.ok) throw new Error(res?.error ?? "unknown");
+        const { slot, eventsAround: evs } = res.data as {
+          slot: Slot | null;
+          eventsAround: CalendarEvent[];
+        };
+        if (!slot) {
+          day.fullyFetched = true;
+          noMoreDays = true;
+          return null;
+        }
+        if (sameSpDay(new Date(slot.start), dayStart)) {
+          day.slots.push(slot);
+          return slot;
+        }
+        // Different day → cache as next-day entry (saves a roundtrip when
+        // user later clicks →) and mark current day done.
+        day.fullyFetched = true;
+        if (!entries[dayCursor + 1]) {
+          entries.push({
+            slots: [slot],
+            events: evs ?? [],
+            fullyFetched: false,
+          });
+        }
+        return null;
+      } catch (err) {
+        console.error("[busy-checker] intra fetch failed", err);
+        return null;
+      } finally {
+        intraFetching = false;
+        updateIntraButtons();
+        updateSideLabels();
+      }
+    };
+
+    const renderCurrent = (animateTime = false) => {
+      const day = entries[dayCursor];
+      const slot = day.slots[slotCursor];
+      const events = day.events;
       const fromTime = animateTime ? displayedTime : null;
-      currentSlot = entry.slot;
-      const start = new Date(entry.slot.start);
-      const end = new Date(entry.slot.end);
+      currentSlot = slot;
+      const start = new Date(slot.start);
+      const end = new Date(slot.end);
       const gapMin = Math.floor((end.getTime() - start.getTime()) / 60000);
 
       if (fromTime) {
         animateTimeTo(fromTime, start);
-        fadeAgendaTo(entry.slot, entry.events);
+        fadeAgendaTo(slot, events);
       } else {
         if (timeAnimHandle !== null) cancelAnimationFrame(timeAnimHandle);
         writeClock(start);
         writeDate(start);
         displayedTime = start;
-        renderAgenda(entry.slot, entry.events);
+        renderAgenda(slot, events);
       }
 
       // Duration chips for the schedule form (capped to gap size)
@@ -500,9 +589,10 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       });
 
       updateSideLabels();
-      // Pre-fetch the next slot in the background so the side label shows
-      // its weekday before the user clicks.
-      void prefetchNext();
+      updateIntraButtons();
+      // Pre-fetch the next day's first slot so the side label is ready
+      // before the user clicks →.
+      void prefetchNextDay();
     };
 
     const flashSlot = (direction: "next" | "prev") => {
@@ -512,33 +602,57 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     };
 
     prevBtn.addEventListener("click", () => {
-      if (cursor === 0 || prevBtn.disabled) return;
-      cursor--;
+      if (dayCursor === 0 || prevBtn.disabled) return;
+      dayCursor--;
+      slotCursor = 0;
       flashSlot("prev");
-      renderSlot(entries[cursor], true);
+      renderCurrent(true);
     });
 
     nextBtn.addEventListener("click", async () => {
       if (nextBtn.disabled) return;
-      if (cursor < entries.length - 1) {
-        cursor++;
+      if (dayCursor < entries.length - 1) {
+        dayCursor++;
+        slotCursor = 0;
         flashSlot("next");
-        renderSlot(entries[cursor], true);
+        renderCurrent(true);
         return;
       }
-      if (noMoreSlots) return;
-      await prefetchNext();
-      if (entries[cursor + 1]) {
-        cursor++;
+      if (noMoreDays) return;
+      await prefetchNextDay();
+      if (entries[dayCursor + 1]) {
+        dayCursor++;
+        slotCursor = 0;
         flashSlot("next");
-        renderSlot(entries[cursor], true);
+        renderCurrent(true);
+      }
+    });
+
+    upBtn.addEventListener("click", () => {
+      if (upBtn.disabled || slotCursor === 0) return;
+      slotCursor--;
+      renderCurrent(true);
+    });
+
+    downBtn.addEventListener("click", async () => {
+      if (downBtn.disabled) return;
+      const day = entries[dayCursor];
+      if (slotCursor < day.slots.length - 1) {
+        slotCursor++;
+        renderCurrent(true);
+        return;
+      }
+      const next = await fetchNextIntraSlot();
+      if (next) {
+        slotCursor++;
+        renderCurrent(true);
       }
     });
 
     slotEl.hidden = false;
     scheduleBtn.hidden = false;
     titleInput.value = `Conversa com ${name}`;
-    renderSlot(entries[0]);
+    renderCurrent();
 
     scheduleBtn.addEventListener("click", () => {
       scheduleBtn.hidden = true;
@@ -815,12 +929,44 @@ const WIDGET_HTML = `
     background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
   }
 
-  /* Flip-clock cards (HH MM) */
+  /* Flip-clock cards (HH MM) + intra-day chevron navigation */
+  #bc-clock-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
   #bc-flip-clock {
     display: flex;
     gap: 5px;
     flex-shrink: 0;
   }
+  #bc-slot-intra {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .bc-chev {
+    background: transparent;
+    border: 1px solid #e5e7eb;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    padding: 0;
+    color: #6b7280;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.08s;
+  }
+  .bc-chev svg { width: 12px; height: 12px; display: block; }
+  .bc-chev:hover:not(:disabled) {
+    background: #f3f4f6;
+    color: #111827;
+    border-color: #d1d5db;
+  }
+  .bc-chev:active:not(:disabled) { transform: scale(0.92); }
+  .bc-chev:disabled { opacity: 0.3; cursor: not-allowed; }
   .bc-flip-card {
     background: #ffffff;
     border: 1px solid #d4d4d8;
@@ -840,16 +986,6 @@ const WIDGET_HTML = `
     position: relative;
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     overflow: hidden;
-  }
-  /* Hairline horizontal split — mimics the seam between top/bottom flap */
-  .bc-flip-card::after {
-    content: "";
-    position: absolute;
-    left: 0; right: 0;
-    top: 50%;
-    height: 1px;
-    background: rgba(0,0,0,0.08);
-    pointer-events: none;
   }
 
   /* === Agenda (Google Calendar timeline) ===
@@ -1106,9 +1242,19 @@ const WIDGET_HTML = `
           <div id="bc-cal-month"></div>
           <div id="bc-cal-day"></div>
         </div>
-        <div id="bc-flip-clock" aria-hidden="true">
-          <div class="bc-flip-card" id="bc-time-hour"></div>
-          <div class="bc-flip-card" id="bc-time-minute"></div>
+        <div id="bc-clock-wrap">
+          <div id="bc-flip-clock" aria-hidden="true">
+            <div class="bc-flip-card" id="bc-time-hour"></div>
+            <div class="bc-flip-card" id="bc-time-minute"></div>
+          </div>
+          <div id="bc-slot-intra">
+            <button id="bc-slot-up" class="bc-chev" type="button" disabled aria-label="slot anterior do dia">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+            </button>
+            <button id="bc-slot-down" class="bc-chev" type="button" aria-label="próximo slot do dia">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+          </div>
         </div>
       </div>
       <div id="bc-agenda"></div>
