@@ -39,6 +39,53 @@ async function getSettings(): Promise<Settings> {
   };
 }
 
+// Google Chat enforces Trusted Types: setting .innerHTML with a raw string
+// throws. Register an extension policy that returns the string verbatim, or
+// fall back to DOMParser if creation is blocked. Either path bypasses the
+// "Uncaught" error and inserts the HTML correctly.
+type TTPolicyShape = { createHTML: (s: string) => string };
+const ttPolicy: TTPolicyShape | null = (() => {
+  const w = window as unknown as {
+    trustedTypes?: {
+      createPolicy?: (
+        name: string,
+        rules: { createHTML: (s: string) => string },
+      ) => TTPolicyShape;
+    };
+  };
+  if (!w.trustedTypes?.createPolicy) return null;
+  try {
+    return w.trustedTypes.createPolicy("busy-checker", {
+      createHTML: (s: string) => s,
+    });
+  } catch (err) {
+    console.warn("[busy-checker] TT policy creation failed", err);
+    return null;
+  }
+})();
+
+function clearChildren(el: Element | ShadowRoot): void {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+function setInnerHTML(el: Element | ShadowRoot, html: string): void {
+  clearChildren(el);
+  if (ttPolicy) {
+    (el as { innerHTML: string }).innerHTML = ttPolicy.createHTML(
+      html,
+    ) as unknown as string;
+    return;
+  }
+  // Fallback: parse via DOMParser then append. DOMParser doesn't trigger
+  // TT enforcement because the parsed nodes aren't yet attached to the
+  // live document.
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const frag = document.createDocumentFragment();
+  parsed.head.childNodes.forEach((n) => frag.appendChild(n.cloneNode(true)));
+  parsed.body.childNodes.forEach((n) => frag.appendChild(n.cloneNode(true)));
+  el.appendChild(frag);
+}
+
 function textColorFor(hex: string): string {
   let h = hex.replace("#", "");
   if (h.length === 3) h = h.split("").map((c) => c + c).join("");
@@ -97,7 +144,7 @@ function openWidget(name: string): void {
   host.style.cssText =
     "all:initial;position:fixed!important;bottom:24px!important;right:24px!important;z-index:2147483647!important;";
   const shadow = host.attachShadow({ mode: "open" });
-  shadow.innerHTML = WIDGET_HTML;
+  setInnerHTML(shadow, WIDGET_HTML);
   (document.documentElement || document.body).appendChild(host);
 
   const $ = <T extends Element = HTMLElement>(sel: string) =>
@@ -381,7 +428,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       agendaEl
         .querySelectorAll(".bc-tl-line, .bc-tl-hour")
         .forEach((n) => n.remove());
-      track.innerHTML = "";
+      clearChildren(track);
 
       const slotStartMs = new Date(slot.start).getTime();
       const slotEndMs = new Date(slot.end).getTime();
@@ -470,10 +517,10 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
           block.style.background = eventColor;
           block.style.color = eventTextColor;
         }
-        block.innerHTML = `
-          <span class="bc-ev-time"></span>
-          <span class="bc-ev-title"></span>
-        `;
+        setInnerHTML(
+          block,
+          `<span class="bc-ev-time"></span><span class="bc-ev-title"></span>`,
+        );
         (block.querySelector(".bc-ev-time") as HTMLElement).textContent =
           item.timeLabel;
         (block.querySelector(".bc-ev-title") as HTMLElement).textContent =
@@ -674,7 +721,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       if (!validDurations.includes(selectedDur)) {
         selectedDur = validDurations.includes(30) ? 30 : validDurations[0];
       }
-      durRow.innerHTML = "";
+      clearChildren(durRow);
       validDurations.forEach((m) => {
         const btn = document.createElement("button");
         btn.type = "button";
@@ -807,7 +854,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
           parts.push(`<a href="${meetLink}" target="_blank">Abrir Meet</a>`);
         if (htmlLink)
           parts.push(`<a href="${htmlLink}" target="_blank">Ver evento</a>`);
-        success.innerHTML = parts.join(" · ");
+        setInnerHTML(success, parts.join(" · "));
       } catch (err) {
         const msg = (err as Error).message;
         confirmBtn.disabled = false;
