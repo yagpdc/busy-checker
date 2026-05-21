@@ -7,22 +7,39 @@
   </head>
   <body>
     <header>
-      <h1>Toki</h1>
-      <div id="user-row">
-        <span id="user-email">não conectado</span>
+      <div class="brand">
+        <span class="brand-kanji">時</span>
+        <span class="brand-name">Toki</span>
+      </div>
+      <div class="user-area">
+        <span id="user-email"></span>
         <button id="sign-in" type="button">Entrar com Google</button>
         <button id="sign-out" type="button" hidden>Sair</button>
       </div>
     </header>
 
     <main>
-      <label for="question">Pergunta</label>
-      <textarea
-        id="question"
-        rows="2"
-        placeholder="Email (ex: joao@driva.com.br) ou nome (ex: João Silva)"
-      ></textarea>
-      <button id="ask" type="button">Perguntar</button>
+      <div class="prompt-box">
+        <textarea
+          id="question"
+          rows="2"
+          placeholder="email ou nome de alguém"
+        ></textarea>
+        <button id="ask" type="button" class="prompt-send" aria-label="Consultar">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="5 12 12 5 19 12"></polyline>
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+          </svg>
+        </button>
+      </div>
 
       <section id="result" hidden>
         <p id="reply"></p>
@@ -39,9 +56,9 @@
         <div class="time-row">
           <label for="work-start">Horário</label>
           <input id="work-start" type="number" min="0" max="23" />
-          <span>até</span>
+          <span class="sep">até</span>
           <input id="work-end" type="number" min="1" max="24" />
-          <span>h</span>
+          <span class="sep">h</span>
         </div>
         <div class="time-row">
           <label for="event-color">Cor dos eventos</label>
