@@ -81,6 +81,8 @@ type Msg =
       question?: string;
       targetEmail?: string;
       targetName?: string;
+      messages?: Array<{ role: "user" | "assistant"; content: string }>;
+      contextTargetEmail?: string;
     }
   | {
       type: "schedule";
@@ -109,12 +111,19 @@ chrome.runtime.onMessage.addListener(
           return { ok: true };
         case "query": {
           const s = await getSettings();
-          return await apiFetch<{ reply: string; facts: unknown }>("/query", {
+          return await apiFetch<{
+            reply: string;
+            target: { email: string; name: string | null } | null;
+            candidates: Array<{ email: string; name: string | null }>;
+            facts: unknown;
+          }>("/query", {
             method: "POST",
             body: JSON.stringify({
               question: msg.question,
               targetEmail: msg.targetEmail,
               targetName: msg.targetName,
+              messages: msg.messages,
+              contextTargetEmail: msg.contextTargetEmail,
               workStartHour: s.workStartHour,
               workEndHour: s.workEndHour,
             }),

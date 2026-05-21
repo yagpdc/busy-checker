@@ -19,6 +19,39 @@ function send<T>(msg: unknown): Promise<T> {
 const $ = <T extends HTMLElement>(id: string): T =>
   document.getElementById(id) as T;
 
+// === Chat state (persisted in chrome.storage.session) ===
+type Msg = { role: "user" | "assistant"; content: string };
+type ChatState = {
+  messages: Msg[];
+  // Currently-resolved person — used for pronoun follow-ups ("e amanhã?").
+  // Cleared when the user explicitly switches targets.
+  target: { email: string; name: string | null } | null;
+};
+
+let chatState: ChatState = { messages: [], target: null };
+
+async function loadChatState(): Promise<void> {
+  const data = await chrome.storage.session
+    .get(["chatMessages", "chatTarget"])
+    .catch(() => ({}));
+  const messages = Array.isArray((data as { chatMessages?: unknown }).chatMessages)
+    ? ((data as { chatMessages: Msg[] }).chatMessages.filter(
+        (m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
+      ))
+    : [];
+  const target = ((data as { chatTarget?: unknown }).chatTarget ?? null) as
+    | ChatState["target"]
+    | null;
+  chatState = { messages, target };
+  renderThread();
+}
+
+async function persistChatState(): Promise<void> {
+  await chrome.storage.session
+    .set({ chatMessages: chatState.messages, chatTarget: chatState.target })
+    .catch(() => undefined);
+}
+
 // === User / auth ===
 async function refreshUser(): Promise<void> {
   const { user, session } = await chrome.storage.local.get(["user", "session"]);
@@ -44,12 +77,17 @@ function setGreeting(email: string | null): void {
   const el = $<HTMLParagraphElement>("greeting-line");
   const hour = new Date().getHours();
   const period =
-    hour < 5 ? "Boa noite" : hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+    hour < 5
+      ? "Boa noite"
+      : hour < 12
+      ? "Bom dia"
+      : hour < 18
+      ? "Boa tarde"
+      : "Boa noite";
   if (!email) {
     el.textContent = `${period}`;
     return;
   }
-  // First name from the local-part: "yago.santos" → "Yago"
   const local = email.split("@")[0] ?? "";
   const firstChunk = local.split(/[._-]/)[0] ?? local;
   const name = firstChunk
@@ -64,7 +102,6 @@ function showError(msg: string): void {
   el.textContent = msg;
   el.hidden = false;
 }
-
 function clearError(): void {
   $<HTMLParagraphElement>("error").hidden = true;
 }
@@ -98,8 +135,7 @@ $<HTMLButtonElement>("sign-out").addEventListener("click", async () => {
   await refreshUser();
 });
 
-// === Ask flow ===
-// Mirrors the widget's loading phrases so the popup feels like the same app.
+// === Thread rendering ===
 const LOADING_PHRASES = [
   "時間を整理しています...",
   "Só mais alguns segundos",
@@ -112,68 +148,159 @@ function pickLoadingPhrase(): string {
   return LOADING_PHRASES[Math.floor(Math.random() * LOADING_PHRASES.length)];
 }
 
-function showLoading(): void {
-  const loadingEl = $<HTMLDivElement>("reply-loading");
-  const textEl = loadingEl.querySelector(".loading-text") as HTMLSpanElement;
-  textEl.textContent = pickLoadingPhrase();
-  $<HTMLParagraphElement>("reply").textContent = "";
-  $<HTMLParagraphElement>("reply").hidden = true;
-  loadingEl.hidden = false;
-  $<HTMLElement>("result").hidden = false;
-  $<HTMLButtonElement>("ask").disabled = true;
+function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  cls?: string,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  return node;
 }
 
-function showReply(text: string): void {
-  $<HTMLDivElement>("reply-loading").hidden = true;
-  const reply = $<HTMLParagraphElement>("reply");
-  reply.textContent = text;
-  reply.hidden = false;
-  $<HTMLElement>("result").hidden = false;
-  $<HTMLButtonElement>("ask").disabled = false;
+function appendUserBubble(text: string): void {
+  const thread = $<HTMLElement>("chat-thread");
+  const node = el("div", "msg msg-user");
+  node.textContent = text;
+  thread.appendChild(node);
+  thread.scrollTop = thread.scrollHeight;
 }
 
-function endLoading(): void {
-  $<HTMLDivElement>("reply-loading").hidden = true;
-  $<HTMLButtonElement>("ask").disabled = false;
+function appendAssistantBubble(text: string): void {
+  const thread = $<HTMLElement>("chat-thread");
+  const wrap = el("div", "msg msg-assistant");
+  const kanji = el("span", "msg-kanji");
+  kanji.textContent = "時";
+  const bubble = el("div", "msg-bubble");
+  bubble.textContent = text;
+  wrap.appendChild(kanji);
+  wrap.appendChild(bubble);
+  thread.appendChild(wrap);
+  thread.scrollTop = thread.scrollHeight;
 }
 
-// Heuristic for splitting input. The naive "matches letter/space regex →
-// it's a name" rule misclassifies PT-BR sentences like "o diogo está
-// livre" because they only contain letters and spaces — the backend
-// then directory-searches the whole sentence and finds nothing. Treat
-// anything that looks like a question (punctuation, question word,
-// state verb, 5+ words) as a free-form question and let OpenAI parse
-// who they're asking about.
-const QUESTION_WORDS_RE =
-  /\b(quem|onde|quando|como|qual|quanto|por\s+que|porqu[eê]|est[aá]|t[aá]|fica|tem|vai|livre|ocupad[oa]|hora|amanh[aã]|hoje|agora|agenda|reuni[aã]o|meeting)\b/i;
-
-function classifyInput(q: string): {
-  type: "query";
-  targetEmail?: string;
-  targetName?: string;
-  question?: string;
-} {
-  const emailMatch = q.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
-  if (emailMatch) return { type: "query", targetEmail: emailMatch[0] };
-  const wordCount = q.split(/\s+/).filter(Boolean).length;
-  const looksLikeQuestion =
-    q.includes("?") || wordCount > 4 || QUESTION_WORDS_RE.test(q);
-  if (looksLikeQuestion) return { type: "query", question: q };
-  if (/^[\p{L}\s.'-]{2,80}$/u.test(q)) return { type: "query", targetName: q };
-  return { type: "query", question: q };
+function appendLoadingBubble(): HTMLElement {
+  const thread = $<HTMLElement>("chat-thread");
+  const wrap = el("div", "msg msg-loading");
+  wrap.dataset.loading = "true";
+  const kanji = el("span", "msg-kanji");
+  kanji.textContent = "時";
+  const text = el("span", "loading-text");
+  text.textContent = pickLoadingPhrase();
+  const spinner = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  spinner.setAttribute("class", "loading-spinner");
+  spinner.setAttribute("viewBox", "0 0 24 24");
+  spinner.setAttribute("fill", "none");
+  spinner.setAttribute("stroke", "currentColor");
+  spinner.setAttribute("stroke-width", "2");
+  spinner.setAttribute("stroke-linecap", "round");
+  spinner.setAttribute("stroke-linejoin", "round");
+  spinner.innerHTML =
+    '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>';
+  wrap.appendChild(kanji);
+  wrap.appendChild(text);
+  wrap.appendChild(spinner);
+  thread.appendChild(wrap);
+  thread.scrollTop = thread.scrollHeight;
+  return wrap;
 }
 
-async function runQuery(q: string): Promise<void> {
+function renderThread(): void {
+  const thread = $<HTMLElement>("chat-thread");
+  const controls = $<HTMLElement>("thread-controls");
+  const greeting = $<HTMLElement>("greeting-block");
+  const contextEl = $<HTMLSpanElement>("thread-context");
+
+  thread.replaceChildren();
+  if (chatState.messages.length === 0) {
+    thread.hidden = true;
+    controls.hidden = true;
+    greeting.dataset.active = "false";
+    return;
+  }
+  greeting.dataset.active = "true";
+  thread.hidden = false;
+  controls.hidden = false;
+  for (const m of chatState.messages) {
+    if (m.role === "user") appendUserBubble(m.content);
+    else appendAssistantBubble(m.content);
+  }
+  contextEl.textContent = chatState.target
+    ? `Falando sobre: ${chatState.target.name ?? chatState.target.email}`
+    : "";
+}
+
+// === Ask flow ===
+async function runQuery(text: string): Promise<void> {
   clearError();
-  if (!q) return;
-  const payload = classifyInput(q);
-  showLoading();
+  if (!text) return;
+  const question = text;
+
+  // Append user bubble + persist
+  chatState.messages.push({ role: "user", content: question });
+  if (chatState.messages.length === 1) {
+    $<HTMLElement>("greeting-block").dataset.active = "true";
+    $<HTMLElement>("chat-thread").hidden = false;
+    $<HTMLElement>("thread-controls").hidden = false;
+  }
+  appendUserBubble(question);
+  await persistChatState();
+
+  // Clear the input, disable submit
+  const ta = $<HTMLTextAreaElement>("question");
+  ta.value = "";
+  $<HTMLButtonElement>("ask").disabled = true;
+
+  // Show loading bubble
+  const loadingNode = appendLoadingBubble();
+
   try {
-    const data = await send<{ reply: string; facts: unknown }>(payload);
-    showReply(data.reply);
+    // The history we send is everything EXCEPT the latest user message —
+    // the backend appends that itself as the OpenAI "current question".
+    const history = chatState.messages.slice(0, -1);
+    const payload: {
+      type: "query";
+      question: string;
+      messages: Msg[];
+      contextTargetEmail?: string;
+    } = {
+      type: "query",
+      question,
+      messages: history,
+    };
+    if (chatState.target?.email) {
+      payload.contextTargetEmail = chatState.target.email;
+    }
+    const data = await send<{
+      reply: string;
+      target: { email: string; name: string | null } | null;
+      candidates: Array<{ email: string; name: string | null }>;
+      facts: unknown;
+    }>(payload);
+
+    loadingNode.remove();
+    appendAssistantBubble(data.reply);
+    chatState.messages.push({ role: "assistant", content: data.reply });
+
+    // Carry-over target. Backend returns the resolved person (if any) so
+    // the next pronoun follow-up has someone to refer to. When the turn
+    // was a disambiguation (candidates), target is null — keep prior one.
+    if (data.target) {
+      chatState.target = data.target;
+    }
+    $<HTMLSpanElement>("thread-context").textContent = chatState.target
+      ? `Falando sobre: ${chatState.target.name ?? chatState.target.email}`
+      : "";
+
+    await persistChatState();
   } catch (err) {
-    endLoading();
-    showError((err as Error).message);
+    loadingNode.remove();
+    const msg = (err as Error).message;
+    appendAssistantBubble(`Erro: ${msg}`);
+    chatState.messages.push({ role: "assistant", content: `Erro: ${msg}` });
+    await persistChatState();
+  } finally {
+    $<HTMLButtonElement>("ask").disabled = false;
+    ta.focus();
   }
 }
 
@@ -183,7 +310,6 @@ $<HTMLButtonElement>("ask").addEventListener("click", () => {
 });
 
 $<HTMLTextAreaElement>("question").addEventListener("keydown", (ev) => {
-  // Enter submits; Shift+Enter inserts newline (textarea default).
   if (ev.key === "Enter" && !ev.shiftKey) {
     ev.preventDefault();
     const q = (ev.currentTarget as HTMLTextAreaElement).value.trim();
@@ -191,21 +317,12 @@ $<HTMLTextAreaElement>("question").addEventListener("keydown", (ev) => {
   }
 });
 
-// === Suggestion chips ===
-// Each chip is a starter: prefill the textarea with a question template,
-// focus it, and put the caret where the user should type the person's
-// name. data-q is the prefix; optional data-tail is the suffix after
-// the name (e.g. "está livre agora?"). No chip auto-submits — the user
-// always names someone before sending.
-document.querySelectorAll<HTMLButtonElement>(".chip").forEach((chip) => {
-  chip.addEventListener("click", () => {
-    const prefix = chip.dataset.q ?? "";
-    const tail = chip.dataset.tail ?? "";
-    const ta = $<HTMLTextAreaElement>("question");
-    ta.value = prefix + tail;
-    ta.focus();
-    ta.setSelectionRange(prefix.length, prefix.length);
-  });
+// === Clear conversation ===
+$<HTMLButtonElement>("clear-chat").addEventListener("click", async () => {
+  chatState = { messages: [], target: null };
+  await persistChatState();
+  renderThread();
+  $<HTMLTextAreaElement>("question").focus();
 });
 
 // === Settings ===
@@ -217,9 +334,6 @@ async function loadSettings(): Promise<void> {
   $<HTMLInputElement>("widget-enabled").checked = s.widgetEnabled;
 }
 
-// Widget toggle persists immediately — it's a binary action that doesn't
-// share state with the rest of the form. The content script listens to
-// storage.onChanged and reacts live without a page reload.
 $<HTMLInputElement>("widget-enabled").addEventListener("change", async (ev) => {
   const enabled = (ev.currentTarget as HTMLInputElement).checked;
   const current = await getSettings().catch(() => DEFAULT_SETTINGS);
@@ -257,8 +371,6 @@ $<HTMLButtonElement>("save-settings").addEventListener("click", async () => {
 });
 
 // === Home: session-scoped widget open/close switch ===
-// Lives in chrome.storage.session (cleared on browser restart). The content
-// script writes false when the X is clicked; we write here on toggle.
 async function loadWidgetOpen(): Promise<void> {
   const sess = await chrome.storage.session.get("widgetOpen").catch(() => ({}));
   const open =
@@ -284,20 +396,21 @@ $<HTMLInputElement>("widget-open").addEventListener("change", async (ev) => {
   await chrome.storage.session.set({ widgetOpen: open });
 });
 
-// Keep popup state in sync if the user closes the widget via the X while
-// the popup happens to be open.
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "session" || !changes.widgetOpen) return;
-  const open =
-    typeof changes.widgetOpen.newValue === "boolean"
-      ? changes.widgetOpen.newValue
-      : true;
-  $<HTMLInputElement>("widget-open").checked = open;
-  updateWidgetOpenHelp(open);
+  if (area !== "session") return;
+  if (changes.widgetOpen) {
+    const open =
+      typeof changes.widgetOpen.newValue === "boolean"
+        ? changes.widgetOpen.newValue
+        : true;
+    $<HTMLInputElement>("widget-open").checked = open;
+    updateWidgetOpenHelp(open);
+  }
 });
 
 // === Bootstrap ===
 refreshUser();
+loadChatState();
 loadSettings().catch(() => {
   $<HTMLInputElement>("work-start").value = String(DEFAULT_SETTINGS.workStartHour);
   $<HTMLInputElement>("work-end").value = String(DEFAULT_SETTINGS.workEndHour);

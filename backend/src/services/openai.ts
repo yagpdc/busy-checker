@@ -1,9 +1,10 @@
 // THE ONLY file in the backend that talks to OpenAI.
 //
-// One single call site: `parseQuestion`. It's gated upstream in
-// routes/query.ts to fire only when the popup receives a free-form text
-// that isn't an email and isn't a plain name. The chat widget never
-// reaches this path (it sends targetName directly).
+// Two call sites, both gated upstream from routes/query.ts so the chat
+// widget never spends tokens (it sends a targetName directly):
+//  - parseQuestion: extracts a person hint/email from a free-form question
+//  - answerQuestion: multi-turn conversational answer grounded in the
+//    facts JSON; receives the prior conversation history
 
 import OpenAI from "openai";
 import { config } from "../config.js";
@@ -24,13 +25,22 @@ export type ParsedQuestion = {
   targetHint: string | null;
 };
 
+export type ChatMessage = { role: "user" | "assistant"; content: string };
+
 /**
- * Pulls a target email (or a name hint) out of a free-form question.
- * Kept narrow on purpose — directory resolution is the caller's job.
+ * Pulls a target hint/email out of the latest user message, using the prior
+ * conversation as context — so "qual o horário do Silva?" after the assistant
+ * listed multiple "Mateus" candidates can still resolve to Mateus Silva.
+ *
+ * Returns ParsedQuestion with one or both of email/hint, or both null when
+ * the user isn't naming anyone (in which case the route falls back to the
+ * currently-resolved target from session context).
  */
 export async function parseQuestion(
   question: string,
+  history: ChatMessage[] = [],
 ): Promise<ParsedQuestion> {
+  const trimmed = history.slice(-8);
   const resp = await requireClient().chat.completions.create({
     model: config.openai.model,
     temperature: 0,
@@ -39,11 +49,16 @@ export async function parseQuestion(
       {
         role: "system",
         content:
-          'Extract who the user is asking about. Return JSON: ' +
-          '{"targetEmail": string|null, "targetHint": string|null}. ' +
-          "targetEmail only if an email literal appears in the question. " +
-          "targetHint is the person's name or other identifier otherwise.",
+          'Extract who the user is asking about in the LATEST message. ' +
+          'Return JSON: {"targetEmail": string|null, "targetHint": string|null}. ' +
+          "targetEmail only if a literal email appears. " +
+          "targetHint is the person's name or distinguishing word (e.g. " +
+          '"Silva" when previously the assistant offered "Mateus Silva" and ' +
+          '"Mateus Costa"). Combine with prior turns when the new message ' +
+          "is short/partial. Both null if no person is referenced (pronoun " +
+          'follow-up like "e amanhã?").',
       },
+      ...trimmed,
       { role: "user", content: question },
     ],
   });
@@ -60,14 +75,18 @@ export async function parseQuestion(
 }
 
 /**
- * Answers a free-form Portuguese question about the target's availability,
- * grounded in the facts JSON. Conversational, 1–3 sentences. Used only
- * by the popup — the chat widget never reaches this.
+ * Multi-turn answer in PT-BR grounded in the JSON context. Receives the
+ * prior conversation so follow-ups have memory of who was discussed.
+ * Context may include calendar facts (target resolved) or a `candidates`
+ * list (disambiguation needed) — the system prompt directs the model how
+ * to handle each.
  */
 export async function answerQuestion(
   question: string,
   context: Record<string, unknown>,
+  history: ChatMessage[] = [],
 ): Promise<string> {
+  const trimmed = history.slice(-12);
   const resp = await requireClient().chat.completions.create({
     model: config.openai.model,
     temperature: 0.4,
@@ -75,19 +94,23 @@ export async function answerQuestion(
       {
         role: "system",
         content:
-          "Você é o Toki, um assistente de agenda. Responde em português do " +
-          "Brasil, em no máximo 3 frases curtas, de forma direta e " +
-          "conversacional. Use APENAS os fatos fornecidos no JSON de contexto " +
-          "— não invente nada. Horários estão em America/Sao_Paulo. Se a " +
-          "pergunta pede informação que não está no contexto (ex: pergunta " +
-          'sobre "depois de amanhã" mas só temos eventos das próximas 24h), ' +
-          "diga isso de forma educada. Use o nome do target (parte antes do " +
-          "@ no email) ao se referir à pessoa.",
+          "Você é o Toki, um assistente de agenda da Driva. Responde em " +
+          "português do Brasil, no máximo 3 frases curtas, direto e " +
+          'conversacional. Mantém o contexto: o usuário pode usar "ele/ela" ' +
+          "referindo-se à pessoa já mencionada.\n\n" +
+          "Use APENAS os fatos do JSON de contexto — não invente horários, " +
+          "reuniões nem detalhes. Horários estão em America/Sao_Paulo.\n\n" +
+          "Se o contexto incluir `candidates` (lista de pessoas com nomes " +
+          "parecidos), liste-as numeradas e pergunte qual o usuário quer. Se " +
+          "vier `events`, use títulos/horários pra contextualizar (ex: 'ele " +
+          "tem Daily às 15h30'). Se a info pedida não está no contexto, diga " +
+          "educadamente. Use o primeiro nome da pessoa.",
       },
+      ...trimmed,
       {
         role: "user",
         content:
-          `Pergunta do usuário: ${question}\n\n` +
+          `${question}\n\n` +
           `Contexto (JSON):\n${JSON.stringify(context, null, 2)}`,
       },
     ],

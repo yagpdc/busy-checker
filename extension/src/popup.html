@@ -43,7 +43,7 @@
       </header>
 
       <main>
-        <div class="greeting">
+        <div class="greeting" id="greeting-block">
           <p id="greeting-line" class="greeting-title">Olá</p>
           <p class="greeting-sub">
             Pergunte sobre a agenda de alguém — eu respondo com base no
@@ -51,17 +51,19 @@
           </p>
         </div>
 
+        <section id="chat-thread" class="chat-thread" hidden></section>
+
         <div class="prompt-box">
           <textarea
             id="question"
             rows="2"
-            placeholder="Ex: o Lucas está livre amanhã às 14h?"
+            placeholder="Pergunte sobre a agenda de alguém..."
           ></textarea>
           <button
             id="ask"
             type="button"
             class="prompt-send"
-            aria-label="Consultar"
+            aria-label="Enviar"
           >
             <svg
               viewBox="0 0 24 24"
@@ -78,47 +80,12 @@
           </button>
         </div>
 
-        <div class="suggestions" id="suggestions">
-          <button
-            class="chip"
-            type="button"
-            data-q="Como está a agenda de "
-          >
-            Ver agenda de…
-          </button>
-          <button class="chip" type="button" data-q="Quando o ">
-            Sugerir horário com…
-          </button>
-          <button
-            class="chip"
-            type="button"
-            data-q="O "
-            data-tail=" está livre agora?"
-          >
-            Está livre agora?
+        <div class="thread-controls" id="thread-controls" hidden>
+          <span class="thread-context" id="thread-context"></span>
+          <button id="clear-chat" type="button" class="thread-clear">
+            Limpar conversa
           </button>
         </div>
-
-        <section id="result" hidden>
-          <div id="reply-loading" class="reply-loading" hidden>
-            <span class="loading-kanji">時</span>
-            <span class="loading-text"></span>
-            <svg
-              class="loading-spinner"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="12" r="10"></circle>
-              <polyline points="12 6 12 12 16 14"></polyline>
-            </svg>
-          </div>
-          <p id="reply"></p>
-        </section>
 
         <p id="error" hidden></p>
 

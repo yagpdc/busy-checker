@@ -1,15 +1,19 @@
 import { google } from "googleapis";
 import type { OAuth2Client } from "google-auth-library";
 
+export type DirectoryCandidate = {
+  email: string;
+  name: string | null;
+};
+
 /**
- * Look up a Workspace email by display name using the People API directory
- * search. Returns null if the hint matches 0 results or multiple ambiguous
- * ones with no exact name match.
+ * Look up Workspace people by display name. Returns all candidates so the
+ * caller (or the assistant model) can disambiguate. Empty array on miss.
  */
-export async function findEmailInDirectory(
+export async function searchDirectory(
   asker: OAuth2Client,
   nameHint: string,
-): Promise<string | null> {
+): Promise<DirectoryCandidate[]> {
   const people = google.people({ version: "v1", auth: asker });
   try {
     const res = await people.people.searchDirectoryPeople({
@@ -19,27 +23,43 @@ export async function findEmailInDirectory(
       pageSize: 10,
     });
     const matches = res.data.people ?? [];
-    if (matches.length === 0) return null;
-
-    // Single match: trust it.
-    if (matches.length === 1) {
-      return matches[0].emailAddresses?.[0]?.value ?? null;
+    const seen = new Set<string>();
+    const out: DirectoryCandidate[] = [];
+    for (const p of matches) {
+      const email = p.emailAddresses?.[0]?.value;
+      if (!email || seen.has(email)) continue;
+      seen.add(email);
+      out.push({
+        email,
+        name: p.names?.[0]?.displayName ?? null,
+      });
     }
-
-    // Multiple matches: only resolve if exactly one has an exact-name match
-    // (case-insensitive). Otherwise we'd guess wrong.
-    const needle = nameHint.trim().toLowerCase();
-    const exact = matches.filter((p) =>
-      (p.names ?? []).some(
-        (n) => n.displayName?.trim().toLowerCase() === needle,
-      ),
-    );
-    if (exact.length === 1) {
-      return exact[0].emailAddresses?.[0]?.value ?? null;
-    }
-    return null;
+    return out;
   } catch (err) {
     console.error("directory search failed", err);
-    return null;
+    return [];
   }
+}
+
+/**
+ * Backwards-compatible single-best-match resolver. Returns null when there's
+ * either no match or genuine ambiguity. Used as a fast path — callers that
+ * want to surface candidates to the user should call `searchDirectory`
+ * directly.
+ */
+export async function findEmailInDirectory(
+  asker: OAuth2Client,
+  nameHint: string,
+): Promise<string | null> {
+  const candidates = await searchDirectory(asker, nameHint);
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) return candidates[0].email;
+  // Multiple: only auto-resolve if exactly one is an exact case-insensitive
+  // name match. Otherwise let the caller disambiguate.
+  const needle = nameHint.trim().toLowerCase();
+  const exact = candidates.filter(
+    (c) => (c.name ?? "").trim().toLowerCase() === needle,
+  );
+  if (exact.length === 1) return exact[0].email;
+  return null;
 }

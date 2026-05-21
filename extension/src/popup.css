@@ -215,34 +215,79 @@ main { padding: 14px 16px 16px; }
   color: #111827;
 }
 
-/* === Result === */
-#result {
-  margin-top: 14px;
-  padding: 12px 14px;
-  background: #fafafa;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  animation: fade-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-}
+/* === Chat thread === */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-#reply {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: #111827;
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.chat-thread {
+  margin-top: 4px;
+  margin-bottom: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 2px; /* leave room for the scrollbar */
+}
+.chat-thread::-webkit-scrollbar { width: 6px; }
+.chat-thread::-webkit-scrollbar-thumb {
+  background: #e5e7eb;
+  border-radius: 999px;
 }
 
-/* === Mini loading (mirrors widget's loading row, slightly smaller) === */
-.reply-loading {
+.msg {
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  animation: fade-in 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+.msg-user {
+  align-self: flex-end;
+  background: #111827;
+  color: #ffffff;
+  padding: 8px 12px;
+  border-radius: 14px 14px 4px 14px;
+  max-width: 84%;
+}
+.msg-assistant {
+  align-self: flex-start;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 92%;
+}
+.msg-assistant .msg-kanji {
+  font-family: "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP",
+    "Noto Serif CJK JP", "MS Mincho", "Songti SC", serif;
+  font-size: 16px;
+  color: #111827;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+.msg-assistant .msg-bubble {
+  background: #f3f4f6;
+  color: #111827;
+  padding: 8px 12px;
+  border-radius: 14px 14px 14px 4px;
+}
+
+.msg-loading {
+  align-self: flex-start;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  padding: 6px 4px;
   animation: fade-in 0.2s ease-out;
 }
-.loading-kanji {
+.msg-loading .msg-kanji {
   font-family: "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP",
     "Noto Serif CJK JP", "MS Mincho", "Songti SC", serif;
   font-size: 18px;
@@ -250,28 +295,54 @@ main { padding: 14px 16px 16px; }
   font-weight: 500;
   line-height: 1;
   letter-spacing: -0.02em;
-  flex-shrink: 0;
 }
-.loading-text {
-  flex: 1;
-  min-width: 0;
+.msg-loading .loading-text {
   font-size: 12.5px;
   color: #6b7280;
   letter-spacing: -0.005em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-.loading-spinner {
-  width: 14px;
-  height: 14px;
+.msg-loading .loading-spinner {
+  width: 13px;
+  height: 13px;
   color: #9ca3af;
-  flex-shrink: 0;
   animation: spin 1.4s linear infinite;
 }
-@keyframes spin {
-  to { transform: rotate(360deg); }
+
+/* === Thread controls (context + clear) === */
+.thread-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 4px 2px 0;
 }
+.thread-context {
+  font-size: 11px;
+  color: #6b7280;
+  letter-spacing: -0.005em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-context:empty { display: none; }
+.thread-clear {
+  font: inherit;
+  font-size: 11px;
+  background: transparent;
+  border: 0;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: color 0.12s, background 0.12s;
+  white-space: nowrap;
+}
+.thread-clear:hover { color: #111827; background: #f3f4f6; }
+
+/* Hide greeting once a conversation starts */
+#greeting-block[data-active="true"] { display: none; }
 
 #error {
   color: #dc2626;
