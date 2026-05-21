@@ -2,7 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireSession } from "../middleware/session.js";
 import { clientForUser } from "../services/google.js";
-import { currentMeeting, nextFreeSlot } from "../services/calendar.js";
+import {
+  busyIntervalsAround,
+  currentMeeting,
+  nextFreeSlot,
+} from "../services/calendar.js";
 import { findEmailInDirectory } from "../services/directory.js";
 import { emailForNameHint, presenceForEmail } from "../services/presence.js";
 import { openaiEnabled, parseQuestion } from "../services/openai.js";
@@ -135,6 +139,9 @@ router.post("/", requireSession, async (req, res) => {
         : null,
       outsideWorkingHours: facts.outsideWorkingHours,
       workingHours: facts.workingHours,
+      busyAround: facts.suggestedSlot
+        ? await busyIntervalsAround(asker, targetEmail, facts.suggestedSlot.start).catch(() => [])
+        : [],
     },
   });
 });

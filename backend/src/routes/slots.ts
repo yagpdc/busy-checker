@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireSession } from "../middleware/session.js";
 import { clientForUser } from "../services/google.js";
-import { nextFreeSlot } from "../services/calendar.js";
+import { busyIntervalsAround, nextFreeSlot } from "../services/calendar.js";
 
 const router = Router();
 
@@ -35,10 +35,14 @@ router.post("/next", requireSession, async (req, res) => {
       },
       now,
     );
+    const busyAround = slot
+      ? await busyIntervalsAround(asker, parse.data.targetEmail, slot.start).catch(() => [])
+      : [];
     res.json({
       slot: slot
         ? { start: slot.start.toISOString(), end: slot.end.toISOString() }
         : null,
+      busyAround,
     });
   } catch (err) {
     console.error("slots/next failed", err);

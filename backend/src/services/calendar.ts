@@ -215,6 +215,56 @@ export async function nextFreeSlot(
   return null;
 }
 
+export type BusyInterval = { start: string; end: string };
+
+/**
+ * Lists `targetEmail`'s blocking intervals around `center`. Used to draw the
+ * "agenda strip" — only times, no titles. Falls back to FreeBusy when
+ * events.list is denied.
+ */
+export async function busyIntervalsAround(
+  asker: OAuth2Client,
+  targetEmail: string,
+  center: Date,
+  rangeMs: number = 2 * 60 * 60 * 1000,
+): Promise<BusyInterval[]> {
+  const calendar = google.calendar({ version: "v3", auth: asker });
+  const timeMin = new Date(center.getTime() - rangeMs).toISOString();
+  const timeMax = new Date(center.getTime() + rangeMs).toISOString();
+
+  try {
+    const { data } = await calendar.events.list({
+      calendarId: targetEmail,
+      timeMin,
+      timeMax,
+      singleEvents: true,
+      orderBy: "startTime",
+      maxResults: 50,
+    });
+    return (data.items ?? [])
+      .filter(blocksTime)
+      .map((ev): BusyInterval | null => {
+        const s = ev.start?.dateTime ?? ev.start?.date;
+        const e = ev.end?.dateTime ?? ev.end?.date;
+        if (!s || !e) return null;
+        return {
+          start: new Date(s).toISOString(),
+          end: new Date(e).toISOString(),
+        };
+      })
+      .filter((x): x is BusyInterval => x !== null);
+  } catch (err: unknown) {
+    const code = (err as { code?: number }).code;
+    if (code !== 403 && code !== 404) throw err;
+    const fb = await calendar.freebusy.query({
+      requestBody: { timeMin, timeMax, items: [{ id: targetEmail }] },
+    });
+    return (fb.data.calendars?.[targetEmail]?.busy ?? [])
+      .filter((b): b is { start: string; end: string } => !!b.start && !!b.end)
+      .map((b) => ({ start: b.start, end: b.end }));
+  }
+}
+
 /**
  * Creates an event on the asker's primary calendar with the target as
  * invitee and a Meet link attached. Returns the Calendar URL + Meet URL.
