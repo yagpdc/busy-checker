@@ -190,8 +190,8 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
   const eventColor = settings.eventColor;
   const eventTextColor = textColorFor(eventColor);
   const emailEl = $("#bc-email") as HTMLElement;
-  const meetingsInfo = $("#bc-meetings-info") as HTMLElement;
-  const statusText = $("#bc-status-text") as HTMLElement;
+  const meetingsBadge = $("#bc-meetings-badge") as HTMLElement;
+  const meetingsCount = $("#bc-meetings-count") as HTMLElement;
   const slotEl = $("#bc-slot") as HTMLElement;
   const scheduleBtn = $<HTMLButtonElement>("#bc-schedule");
   const form = $("#bc-form") as HTMLElement;
@@ -215,39 +215,15 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
 
     root.dataset.state = "ok";
 
-    if (!facts) {
-      root.dataset.status = "unknown";
-      statusText.textContent = "não identificado";
-      return;
-    }
+    if (!facts) return;
 
     emailEl.textContent = facts.targetEmail;
     const n = facts.meetingsToday;
     if (n === null) {
-      meetingsInfo.textContent = "";
-    } else if (n === 0) {
-      meetingsInfo.textContent = "· agenda livre hoje";
-    } else if (n === 1) {
-      meetingsInfo.textContent = "· 1 reunião hoje";
+      meetingsBadge.hidden = true;
     } else {
-      meetingsInfo.textContent = `· ${n} reuniões hoje`;
-    }
-
-    if (facts.meeting.busy) {
-      root.dataset.status = "busy";
-      if (facts.meeting.kind === "outOfOffice") {
-        statusText.textContent = "ausente";
-      } else if (facts.meeting.kind === "focusTime") {
-        statusText.textContent = "em foco";
-      } else {
-        statusText.textContent = "em reunião";
-      }
-    } else if (facts.outsideWorkingHours) {
-      root.dataset.status = "offhours";
-      statusText.textContent = "fora do horário";
-    } else {
-      root.dataset.status = "available";
-      statusText.textContent = "disponível agora";
+      meetingsBadge.hidden = false;
+      meetingsCount.textContent = String(n);
     }
 
     if (!facts.suggestedSlot) return;
@@ -634,8 +610,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     const msg = (err as Error).message;
     if (msg.includes("Extension context invalidated")) return;
     root.dataset.state = "error";
-    statusText.textContent = "erro";
-    meetingsInfo.textContent = msg;
+    emailEl.textContent = msg;
   }
 }
 
@@ -667,27 +642,37 @@ const WIDGET_HTML = `
 
   #bc-header {
     display: flex;
-    align-items: flex-start;
-    gap: 12px;
+    align-items: center;
+    gap: 10px;
     padding: 14px 14px 12px;
     border-bottom: 1px solid #f3f4f6;
   }
   #bc-header-text { flex: 1; min-width: 0; }
-  #bc-label {
-    font-size: 11px;
-    color: #9ca3af;
-    font-weight: 400;
-    letter-spacing: -0.01em;
-  }
   #bc-name {
     font-size: 16px;
     font-weight: 600;
     letter-spacing: -0.015em;
     color: #111827;
-    margin-top: 2px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  #bc-meetings-badge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: #f3f4f6;
+    border-radius: 999px;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+  .bc-cal-icon {
+    width: 13px;
+    height: 13px;
   }
   #bc-close {
     background: none;
@@ -703,45 +688,7 @@ const WIDGET_HTML = `
 
   #bc-body { padding: 14px; }
 
-  #bc-status-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-  #bc-status-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: #9ca3af;
-    transition: background-color 0.25s ease;
-  }
-  /* Soft pulsing while the request is in flight */
-  #bc-root[data-state="thinking"] #bc-status-dot {
-    animation: bc-dot-pulse 1.4s ease-in-out infinite;
-  }
-  @keyframes bc-dot-pulse {
-    0%, 100% { opacity: 0.5; transform: scale(0.85); }
-    50%      { opacity: 1;   transform: scale(1.1); }
-  }
-  /* When we transition to a resolved state, a one-shot pop */
-  #bc-root[data-state="ok"] #bc-status-dot {
-    animation: bc-dot-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-  @keyframes bc-dot-pop {
-    0%   { transform: scale(0.6); }
-    55%  { transform: scale(1.4); }
-    100% { transform: scale(1); }
-  }
-  #bc-root[data-status="available"] #bc-status-dot { background: #059669; }
-  #bc-root[data-status="busy"]      #bc-status-dot { background: #dc2626; }
-  #bc-root[data-status="offhours"]  #bc-status-dot { background: #d97706; }
-  #bc-status-text {
-    font-size: 12px;
-    color: #6b7280;
-    font-weight: 500;
-    letter-spacing: -0.01em;
-    transition: color 0.2s ease;
-  }
+  /* status row removed — status is implicit in the timeline below */
 
   #bc-email {
     font-size: 12px;
@@ -750,12 +697,6 @@ const WIDGET_HTML = `
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-  #bc-meetings-info {
-    font-size: 11px;
-    color: #9ca3af;
-    margin-left: 4px;
-    font-variant-numeric: tabular-nums;
   }
 
   #bc-slot {
@@ -1139,18 +1080,21 @@ const WIDGET_HTML = `
 <div id="bc-root" data-state="thinking" data-status="unknown">
   <div id="bc-header">
     <div id="bc-header-text">
-      <div id="bc-label">busy checker</div>
       <div id="bc-name"></div>
       <div id="bc-email"></div>
+    </div>
+    <div id="bc-meetings-badge" hidden>
+      <svg class="bc-cal-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+        <line x1="16" y1="2" x2="16" y2="6"></line>
+        <line x1="8" y1="2" x2="8" y2="6"></line>
+        <line x1="3" y1="10" x2="21" y2="10"></line>
+      </svg>
+      <span id="bc-meetings-count"></span>
     </div>
     <button id="bc-close" aria-label="fechar">×</button>
   </div>
   <div id="bc-body">
-    <div id="bc-status-row">
-      <span id="bc-status-dot"></span>
-      <span id="bc-status-text">verificando</span>
-      <span id="bc-meetings-info"></span>
-    </div>
     <div id="bc-slot" hidden>
       <div id="bc-days">
         <button id="bc-day-prev" class="bc-day-side" type="button" disabled></button>
