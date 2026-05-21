@@ -48,7 +48,14 @@ async function getSettings(): Promise<Settings> {
 // Cached at module scope so the tight reactToState loop doesn't have to
 // await chrome.storage on every tick. Initialized in bootstrap below;
 // kept in sync via chrome.storage.onChanged.
+//
+// widgetEnabled (persistent, local) — the "never show this" master switch
+//   from the popup settings page.
+// widgetOpen (session-scoped) — the "closed for now" flag toggled by the X
+//   button on the widget OR the switch on the popup home view. Defaults to
+//   true on a fresh browser session.
 let widgetEnabled = DEFAULT_SETTINGS.widgetEnabled;
+let widgetOpen = true;
 
 // Google Chat enforces Trusted Types: setting .innerHTML with a raw string
 // throws. Register an extension policy that returns the string verbatim, or
@@ -137,14 +144,20 @@ function currentConversationName(): string | null {
   if (/^(google\s+)?chat$/i.test(name)) return null;
   if (/^#/.test(name)) return null;
   if (/\b(people|membros|members|participantes)\b/i.test(name)) return null;
+  // Meeting-room/group chats look like "Atlas - 20 de mai." or "Standup #4".
+  // Real people don't have digits or the word "reunião" in their names — if
+  // the title contains either, treat it as a non-DM and skip the widget.
+  if (/\d/.test(name)) return null;
+  if (/\b(reuni[aã]o|meeting)\b/i.test(name)) return null;
   return name;
 }
 
 function reactToState(): void {
-  // Master kill-switch — when the user disables the widget in the popup,
-  // make sure any mounted instance is torn down and skip work on every
-  // subsequent tick until they flip it back on.
-  if (!widgetEnabled) {
+  // Two kill-switches stacked AND. widgetEnabled is the permanent
+  // "never show" from settings; widgetOpen is the session-scoped
+  // "closed for now" from the X button / home toggle. Either off → no
+  // widget, and we proactively tear down any leftover mount.
+  if (!widgetEnabled || !widgetOpen) {
     if (document.getElementById(WIDGET_ID)) {
       removeWidget();
       lastKey = null;
@@ -183,7 +196,16 @@ function openWidget(name: string): void {
     shadow.querySelector(sel) as T;
   ($("#bc-name") as HTMLElement).textContent = name;
   ($(".bc-loading-text") as HTMLElement).textContent = pickLoadingPhrase();
-  $<HTMLButtonElement>("#bc-close").addEventListener("click", removeWidget);
+  $<HTMLButtonElement>("#bc-close").addEventListener("click", () => {
+    void closeWidgetForSession();
+  });
+  $<HTMLButtonElement>("#bc-min").addEventListener("click", () => {
+    const root = shadow.querySelector("#bc-root") as HTMLElement | null;
+    if (!root) return;
+    const minimized = root.getAttribute("data-minimized") === "true";
+    if (minimized) root.removeAttribute("data-minimized");
+    else root.setAttribute("data-minimized", "true");
+  });
   // Suppress event propagation so clicks inside the widget never trigger
   // Chat's own handlers.
   shadow
@@ -191,6 +213,21 @@ function openWidget(name: string): void {
     ?.addEventListener("click", (e) => e.stopPropagation());
 
   void askBackend(name, shadow);
+}
+
+// Close = session-scoped suppression. The flag lives in chrome.storage.session
+// so it clears on browser restart but persists across DM switches. The popup
+// home view exposes the same flag via a switch — flipping it back to true
+// re-mounts the widget on whichever Chat tab is open.
+async function closeWidgetForSession(): Promise<void> {
+  widgetOpen = false;
+  lastKey = null;
+  removeWidget();
+  try {
+    await chrome.storage.session.set({ widgetOpen: false });
+  } catch (err) {
+    console.warn("[busy-checker] could not persist widgetOpen=false", err);
+  }
 }
 
 type Slot = { start: string; end: string };
@@ -1014,17 +1051,63 @@ const WIDGET_HTML = `
     width: 13px;
     height: 13px;
   }
-  #bc-close {
+  #bc-close,
+  #bc-min {
     background: none;
     border: 0;
     color: #9ca3af;
     cursor: pointer;
     line-height: 1;
-    padding: 2px 6px;
+    padding: 4px 6px;
     border-radius: 6px;
-    font-size: 18px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
-  #bc-close:hover { background: #f3f4f6; color: #374151; }
+  #bc-close { font-size: 18px; padding: 2px 6px; }
+  #bc-close:hover,
+  #bc-min:hover { background: #f3f4f6; color: #374151; }
+  #bc-min svg { width: 12px; height: 12px; transition: transform 0.2s ease; }
+  #bc-root[data-minimized="true"] #bc-min svg { transform: rotate(180deg); }
+
+  /* === Minimized state — hide body + meta, show kanji prefix === */
+  #bc-min-kanji {
+    font-family: "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP",
+      "Noto Serif CJK JP", "MS Mincho", "Songti SC", serif;
+    font-size: 18px;
+    color: #111827;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    flex-shrink: 0;
+  }
+  #bc-root:not([data-minimized="true"]) #bc-min-kanji { display: none; }
+  #bc-root[data-minimized="true"] #bc-body { display: none; }
+  #bc-root[data-minimized="true"] #bc-header {
+    border-bottom: 0;
+    padding: 10px 12px;
+  }
+  #bc-root[data-minimized="true"] #bc-email,
+  #bc-root[data-minimized="true"] #bc-busy-tag,
+  #bc-root[data-minimized="true"] #bc-meetings-badge { display: none; }
+  #bc-root[data-minimized="true"] #bc-name {
+    font-size: 13px;
+    font-weight: 500;
+  }
+  #bc-root[data-minimized="true"] {
+    width: auto;
+    min-width: 220px;
+  }
+  /* The "thinking" loading state already hides #bc-header — minimize is
+     only meaningful once we've rendered. Force header back in if both
+     somehow flip on at the same time. */
+  #bc-root[data-state="thinking"][data-minimized="true"] #bc-header {
+    display: flex;
+  }
+  #bc-root[data-state="thinking"][data-minimized="true"] #bc-loading {
+    display: none;
+  }
 
   #bc-body { padding: 10px 12px 12px; }
 
@@ -1551,6 +1634,7 @@ const WIDGET_HTML = `
 </style>
 <div id="bc-root" data-state="thinking" data-status="unknown">
   <div id="bc-header">
+    <span id="bc-min-kanji" aria-hidden="true">時</span>
     <div id="bc-header-text">
       <div id="bc-name-row">
         <span id="bc-name"></span>
@@ -1567,7 +1651,12 @@ const WIDGET_HTML = `
       </svg>
       <span id="bc-meetings-count"></span>
     </div>
-    <button id="bc-close" aria-label="fechar">×</button>
+    <button id="bc-min" aria-label="minimizar" title="minimizar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </button>
+    <button id="bc-close" aria-label="fechar" title="fechar">×</button>
   </div>
   <div id="bc-body">
     <div id="bc-loading">
@@ -1628,27 +1717,49 @@ const obs = new MutationObserver(reactToState);
 obs.observe(document, { subtree: true, childList: true, characterData: true });
 window.addEventListener("popstate", reactToState);
 
-// Seed widgetEnabled from storage before the first reactToState tick.
+// Seed both flags from storage before the first reactToState tick.
 // If the user has the widget off, this prevents a brief flash of the
 // loading card on tab open.
-getSettings()
-  .then((s) => {
+Promise.all([
+  getSettings().catch(() => DEFAULT_SETTINGS),
+  chrome.storage.session
+    .get("widgetOpen")
+    .catch(() => ({ widgetOpen: undefined } as { widgetOpen?: unknown })),
+])
+  .then(([s, sess]) => {
     widgetEnabled = s.widgetEnabled;
+    widgetOpen =
+      typeof (sess as { widgetOpen?: unknown }).widgetOpen === "boolean"
+        ? ((sess as { widgetOpen: boolean }).widgetOpen)
+        : true;
     reactToState();
   })
   .catch(() => reactToState());
 
 // React live to popup toggles — no F5 needed.
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local" || !changes.settings) return;
-  const next = (changes.settings.newValue ?? {}) as Partial<Settings>;
-  const enabled =
-    typeof next.widgetEnabled === "boolean"
-      ? next.widgetEnabled
-      : DEFAULT_SETTINGS.widgetEnabled;
-  if (enabled === widgetEnabled) return;
-  widgetEnabled = enabled;
-  reactToState();
+  if (area === "local" && changes.settings) {
+    const next = (changes.settings.newValue ?? {}) as Partial<Settings>;
+    const enabled =
+      typeof next.widgetEnabled === "boolean"
+        ? next.widgetEnabled
+        : DEFAULT_SETTINGS.widgetEnabled;
+    if (enabled !== widgetEnabled) {
+      widgetEnabled = enabled;
+      reactToState();
+    }
+    return;
+  }
+  if (area === "session" && changes.widgetOpen) {
+    const nextOpen =
+      typeof changes.widgetOpen.newValue === "boolean"
+        ? changes.widgetOpen.newValue
+        : true;
+    if (nextOpen !== widgetOpen) {
+      widgetOpen = nextOpen;
+      reactToState();
+    }
+  }
 });
 
 setInterval(reactToState, 2000);

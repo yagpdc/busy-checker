@@ -3,6 +3,13 @@ import { apiFetch, clearSession, setSession } from "./api.js";
 import { GOOGLE_CLIENT_ID } from "./config.js";
 import { getSettings } from "./settings.js";
 
+// Allow the content script (chat-google.ts) to read/write
+// chrome.storage.session — used for the session-scoped `widgetOpen` flag.
+// Default access level since Chrome 115 is TRUSTED_CONTEXTS only.
+chrome.storage.session
+  .setAccessLevel({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" })
+  .catch((err) => console.warn("session storage access level failed", err));
+
 // === OAuth flow ===
 const SCOPES = [
   "openid",

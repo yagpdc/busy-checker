@@ -211,6 +211,46 @@ $<HTMLButtonElement>("save-settings").addEventListener("click", async () => {
   msg.textContent = "Salvo.";
 });
 
+// === Home: session-scoped widget open/close switch ===
+// Lives in chrome.storage.session (cleared on browser restart). The content
+// script writes false when the X is clicked; we write here on toggle.
+async function loadWidgetOpen(): Promise<void> {
+  const sess = await chrome.storage.session.get("widgetOpen").catch(() => ({}));
+  const open =
+    typeof (sess as { widgetOpen?: unknown }).widgetOpen === "boolean"
+      ? ((sess as { widgetOpen: boolean }).widgetOpen)
+      : true;
+  $<HTMLInputElement>("widget-open").checked = open;
+  updateWidgetOpenHelp(open);
+}
+
+function updateWidgetOpenHelp(open: boolean): void {
+  const help = $<HTMLSpanElement>("widget-open-help");
+  help.textContent = open
+    ? "Aberto. Aparece nas DMs."
+    : "Fechado. Reabra aqui quando quiser.";
+  if (open) delete help.dataset.state;
+  else help.dataset.state = "closed";
+}
+
+$<HTMLInputElement>("widget-open").addEventListener("change", async (ev) => {
+  const open = (ev.currentTarget as HTMLInputElement).checked;
+  updateWidgetOpenHelp(open);
+  await chrome.storage.session.set({ widgetOpen: open });
+});
+
+// Keep popup state in sync if the user closes the widget via the X while
+// the popup happens to be open.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "session" || !changes.widgetOpen) return;
+  const open =
+    typeof changes.widgetOpen.newValue === "boolean"
+      ? changes.widgetOpen.newValue
+      : true;
+  $<HTMLInputElement>("widget-open").checked = open;
+  updateWidgetOpenHelp(open);
+});
+
 // === Bootstrap ===
 refreshUser();
 loadSettings().catch(() => {
@@ -218,4 +258,8 @@ loadSettings().catch(() => {
   $<HTMLInputElement>("work-end").value = String(DEFAULT_SETTINGS.workEndHour);
   $<HTMLInputElement>("event-color").value = DEFAULT_SETTINGS.eventColor;
   $<HTMLInputElement>("widget-enabled").checked = DEFAULT_SETTINGS.widgetEnabled;
+});
+loadWidgetOpen().catch(() => {
+  $<HTMLInputElement>("widget-open").checked = true;
+  updateWidgetOpenHelp(true);
 });
