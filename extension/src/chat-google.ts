@@ -1007,12 +1007,19 @@ const WIDGET_HTML = `
 
   #bc-body { padding: 10px 12px 12px; }
 
-  /* === Loading state (kanji + phrase + clock spinner) === */
+  /* === Loading state (compact: hides header, single thin row) === */
+  #bc-root[data-state="thinking"] #bc-header { display: none; }
+  #bc-root[data-state="thinking"] #bc-body { padding: 0; }
+  #bc-root[data-state="thinking"] {
+    width: auto;
+    min-width: 220px;
+  }
+
   #bc-loading {
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 18px 4px;
+    gap: 10px;
+    padding: 10px 14px;
     animation: bc-loading-in 0.3s ease-out;
   }
   @keyframes bc-loading-in {
@@ -1026,7 +1033,7 @@ const WIDGET_HTML = `
   .bc-loading-kanji {
     font-family: "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP",
       "Noto Serif CJK JP", "MS Mincho", "Songti SC", serif;
-    font-size: 36px;
+    font-size: 20px;
     color: #111827;
     font-weight: 500;
     line-height: 1;
@@ -1035,16 +1042,19 @@ const WIDGET_HTML = `
   }
   .bc-loading-text {
     flex: 1;
-    font-size: 12.5px;
+    font-size: 11.5px;
     color: #6b7280;
     font-style: italic;
     letter-spacing: -0.01em;
-    line-height: 1.4;
+    line-height: 1.3;
     min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .bc-loading-spinner {
-    width: 16px;
-    height: 16px;
+    width: 12px;
+    height: 12px;
     color: #9ca3af;
     flex-shrink: 0;
     animation: bc-spin 2.5s linear infinite;
