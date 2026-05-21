@@ -318,17 +318,69 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       timeAnimHandle = requestAnimationFrame(tick);
     };
 
-    // Renders the agenda as a vertical timeline (Google-Calendar-style):
-    // events are absolutely positioned by their start time, height is
-    // proportional to duration, and the suggested slot is drawn as a
-    // dashed empty block in chronological position.
+    // Renders the agenda as a vertical timeline. Events are absolutely
+    // positioned by start time, height is proportional to duration, and
+    // overlapping events are laid out in side-by-side columns (like
+    // Google Calendar). The suggested slot is a dashed block in
+    // chronological position.
     const PX_PER_MIN = 0.85; // ~51 px per hour
     const WINDOW_RANGE_MS = 2.5 * 60 * 60 * 1000; // ±2.5h around slot
-    const MIN_EVENT_HEIGHT = 16; // floor so micro-events still show some text
-    const COMPACT_THRESHOLD = 28; // below this, use inline layout
+    const MIN_EVENT_HEIGHT = 16;
+    const COMPACT_THRESHOLD = 28;
+    const COLUMN_GAP_PX = 2;
+
+    type LayoutItem = {
+      kind: "event" | "slot";
+      startMs: number;
+      endMs: number;
+      title: string;
+      timeLabel: string;
+    };
+
+    // Greedy column assignment: each item goes into the leftmost column
+    // whose last item has already ended. Returns column index + the max
+    // number of columns active during this item's lifetime (which sets
+    // how wide it should be rendered).
+    const layoutColumns = (
+      items: LayoutItem[],
+    ): Array<{ item: LayoutItem; column: number; columns: number }> => {
+      const sorted = [...items].sort((a, b) => a.startMs - b.startMs);
+      const colsLastEnd: number[] = []; // end time of last event placed in each column
+      const assignments: number[] = new Array(sorted.length);
+      for (let i = 0; i < sorted.length; i++) {
+        const it = sorted[i];
+        let col = colsLastEnd.findIndex((end) => end <= it.startMs);
+        if (col === -1) {
+          col = colsLastEnd.length;
+          colsLastEnd.push(it.endMs);
+        } else {
+          colsLastEnd[col] = it.endMs;
+        }
+        assignments[i] = col;
+      }
+      // For each item compute the max column index among items overlapping
+      // it — that's how many columns its row needs.
+      return sorted.map((it, i) => {
+        let maxCol = assignments[i];
+        for (let j = 0; j < sorted.length; j++) {
+          if (j === i) continue;
+          const other = sorted[j];
+          if (other.startMs < it.endMs && other.endMs > it.startMs) {
+            maxCol = Math.max(maxCol, assignments[j]);
+          }
+        }
+        return { item: it, column: assignments[i], columns: maxCol + 1 };
+      });
+    };
 
     const renderAgenda = (slot: Slot, events: CalendarEvent[]) => {
-      agendaEl.innerHTML = "";
+      const track = agendaEl.querySelector("#bc-agenda-track") as HTMLElement;
+      // Clear previous content
+      agendaEl
+        .querySelectorAll(".bc-tl-line, .bc-tl-hour")
+        .forEach((n) => n.remove());
+      track.innerHTML = "";
+
       const slotStartMs = new Date(slot.start).getTime();
       const slotEndMs = new Date(slot.end).getTime();
       const winStart = slotStartMs - WINDOW_RANGE_MS;
@@ -352,68 +404,69 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         agendaEl.appendChild(lbl);
       }
 
-      const sortedEvents = [...events].sort(
-        (a, b) =>
-          new Date(a.start).getTime() - new Date(b.start).getTime(),
-      );
-
-      for (const ev of sortedEvents) {
-        const eStart = new Date(ev.start).getTime();
-        const eEnd = new Date(ev.end).getTime();
-        const visStart = Math.max(eStart, winStart);
-        const visEnd = Math.min(eEnd, winEnd);
-        if (visEnd <= visStart) continue;
-        const topPx = ((visStart - winStart) / 60000) * PX_PER_MIN;
-        const heightPx = Math.max(
-          MIN_EVENT_HEIGHT,
-          ((visEnd - visStart) / 60000) * PX_PER_MIN,
-        );
-        const block = document.createElement("div");
-        block.className = "bc-ev";
-        block.dataset.compact = heightPx < COMPACT_THRESHOLD ? "true" : "false";
-        block.style.top = `${topPx}px`;
-        block.style.height = `${heightPx}px`;
-        block.style.background = eventColor;
-        block.style.color = eventTextColor;
-        const titleText = (ev.title ?? "").trim() || "(sem título)";
-        block.innerHTML = `
-          <span class="bc-ev-time"></span>
-          <span class="bc-ev-title"></span>
-        `;
-        (block.querySelector(".bc-ev-time") as HTMLElement).textContent =
-          formatTime(new Date(eStart));
-        (block.querySelector(".bc-ev-title") as HTMLElement).textContent =
-          titleText;
-        agendaEl.appendChild(block);
+      // Build layout items — events + the suggested slot — clipped to window
+      const items: LayoutItem[] = [];
+      for (const ev of events) {
+        const s = new Date(ev.start).getTime();
+        const e = new Date(ev.end).getTime();
+        const vs = Math.max(s, winStart);
+        const ve = Math.min(e, winEnd);
+        if (ve <= vs) continue;
+        items.push({
+          kind: "event",
+          startMs: vs,
+          endMs: ve,
+          title: (ev.title ?? "").trim() || "(sem título)",
+          timeLabel: formatTime(new Date(s)),
+        });
       }
-
-      // Suggested slot — dashed transparent block
-      const slotTopPx = ((slotStartMs - winStart) / 60000) * PX_PER_MIN;
-      const slotEndClipped = Math.min(slotEndMs, winEnd);
-      const slotHeightPx = Math.max(
-        MIN_EVENT_HEIGHT,
-        ((slotEndClipped - slotStartMs) / 60000) * PX_PER_MIN,
-      );
       const slotMin = Math.floor((slotEndMs - slotStartMs) / 60000);
       const slotTitle =
         slotMin >= 60
           ? `slot livre · ${Math.floor(slotMin / 60)}h${slotMin % 60 ? ` ${slotMin % 60}min` : ""}`
           : `slot livre · ${slotMin}min`;
-      const slotBlock = document.createElement("div");
-      slotBlock.className = "bc-ev bc-ev-slot";
-      slotBlock.dataset.compact =
-        slotHeightPx < COMPACT_THRESHOLD ? "true" : "false";
-      slotBlock.style.top = `${slotTopPx}px`;
-      slotBlock.style.height = `${slotHeightPx}px`;
-      slotBlock.innerHTML = `
-        <span class="bc-ev-time"></span>
-        <span class="bc-ev-title"></span>
-      `;
-      (slotBlock.querySelector(".bc-ev-time") as HTMLElement).textContent =
-        formatTime(new Date(slotStartMs));
-      (slotBlock.querySelector(".bc-ev-title") as HTMLElement).textContent =
-        slotTitle;
-      agendaEl.appendChild(slotBlock);
+      const slotEndClipped = Math.min(slotEndMs, winEnd);
+      items.push({
+        kind: "slot",
+        startMs: slotStartMs,
+        endMs: slotEndClipped,
+        title: slotTitle,
+        timeLabel: formatTime(new Date(slotStartMs)),
+      });
+
+      const positioned = layoutColumns(items);
+
+      for (const { item, column, columns } of positioned) {
+        const topPx = ((item.startMs - winStart) / 60000) * PX_PER_MIN;
+        const heightPx = Math.max(
+          MIN_EVENT_HEIGHT,
+          ((item.endMs - item.startMs) / 60000) * PX_PER_MIN,
+        );
+        const widthPct = 100 / columns;
+        const leftPct = column * widthPct;
+        const block = document.createElement("div");
+        block.className =
+          item.kind === "slot" ? "bc-ev bc-ev-slot" : "bc-ev";
+        block.dataset.compact =
+          heightPx < COMPACT_THRESHOLD ? "true" : "false";
+        block.style.top = `${topPx}px`;
+        block.style.height = `${heightPx}px`;
+        block.style.left = `${leftPct}%`;
+        block.style.width = `calc(${widthPct}% - ${columns > 1 ? COLUMN_GAP_PX : 0}px)`;
+        if (item.kind === "event") {
+          block.style.background = eventColor;
+          block.style.color = eventTextColor;
+        }
+        block.innerHTML = `
+          <span class="bc-ev-time"></span>
+          <span class="bc-ev-title"></span>
+        `;
+        (block.querySelector(".bc-ev-time") as HTMLElement).textContent =
+          item.timeLabel;
+        (block.querySelector(".bc-ev-title") as HTMLElement).textContent =
+          item.title;
+        track.appendChild(block);
+      }
     };
 
     const fadeAgendaTo = (slot: Slot, events: CalendarEvent[]) => {
@@ -1035,9 +1088,18 @@ const WIDGET_HTML = `
     border-radius: 8px;
     overflow: hidden;
     transition: opacity 0.18s ease;
-    padding-left: 30px; /* room for hour labels */
   }
   #bc-slot[data-fading="true"] #bc-agenda { opacity: 0; }
+
+  /* Events are positioned in % within this track so overlapping events
+     can share the width by splitting into columns. */
+  #bc-agenda-track {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 30px;
+    right: 4px;
+  }
 
   .bc-tl-line {
     position: absolute;
@@ -1059,8 +1121,6 @@ const WIDGET_HTML = `
 
   .bc-ev {
     position: absolute;
-    left: 32px;
-    right: 4px;
     border-radius: 4px;
     overflow: hidden;
     box-shadow: 0 1px 2px rgba(0,0,0,0.06);
@@ -1320,7 +1380,7 @@ const WIDGET_HTML = `
           </div>
         </div>
       </div>
-      <div id="bc-agenda"></div>
+      <div id="bc-agenda"><div id="bc-agenda-track"></div></div>
     </div>
     <button id="bc-schedule" hidden type="button">Agendar nesta janela</button>
     <div id="bc-form" hidden>
