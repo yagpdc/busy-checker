@@ -95,22 +95,26 @@ function formatTime(d: Date): string {
   });
 }
 
-function formatSlot(slot: Slot): string {
+function formatSlotParts(slot: Slot): { time: string; date: string } {
   const start = new Date(slot.start);
   const now = new Date();
   const tz = "America/Sao_Paulo";
+  const time = formatTime(start);
   const sameDay =
     start.toLocaleDateString("pt-BR", { timeZone: tz }) ===
     now.toLocaleDateString("pt-BR", { timeZone: tz });
-  if (sameDay) return `hoje às ${formatTime(start)}`;
-  return (
-    start.toLocaleDateString("pt-BR", {
-      timeZone: tz,
-      weekday: "short",
-      day: "2-digit",
-      month: "2-digit",
-    }) + ` às ${formatTime(start)}`
-  );
+  const date = sameDay
+    ? "Hoje"
+    : start
+        .toLocaleDateString("pt-BR", {
+          timeZone: tz,
+          weekday: "long",
+          day: "2-digit",
+          month: "long",
+        })
+        // Capitalize the weekday for visual rhythm with the big time
+        .replace(/^./, (c) => c.toUpperCase());
+  return { time, date };
 }
 
 const DURATION_OPTIONS_MIN = [15, 30, 45, 60, 90, 120];
@@ -182,6 +186,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     let noMoreSlots = false;
     const prevBtn = $<HTMLButtonElement>("#bc-slot-prev");
     const nextBtn = $<HTMLButtonElement>("#bc-slot-next");
+    const slotDate = $("#bc-slot-date") as HTMLElement;
 
     const renderSlot = (slot: Slot) => {
       currentSlot = slot;
@@ -189,12 +194,14 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       const end = new Date(slot.end);
       const gapMin = Math.floor((end.getTime() - start.getTime()) / 60000);
 
-      slotTime.textContent = formatSlot(slot);
+      const { time, date } = formatSlotParts(slot);
+      slotTime.textContent = time;
+      slotDate.textContent = date;
       const durText =
         gapMin >= 60
           ? `${Math.floor(gapMin / 60)}h${gapMin % 60 ? ` ${gapMin % 60}min` : ""}`
           : `${gapMin}min`;
-      const baseHint = `livre por ${durText} (até ${formatTime(end)})`;
+      const baseHint = `Livre por ${durText} · até ${formatTime(end)}`;
       const atEnd = cursor === slots.length - 1;
       slotHint.textContent =
         atEnd && noMoreSlots ? `${baseHint} · sem mais janelas` : baseHint;
@@ -233,19 +240,19 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       }
     };
 
-    // Toggle a `data-flash` attribute briefly so the inner content
-    // re-runs its keyframe each time we navigate — restarts the animation.
-    const flashSlot = () => {
-      slotEl.dataset.flash = "false";
-      // Force a reflow so removing+adding the attribute re-triggers the anim.
+    // Directional flash: "next" slides content up (forward in time),
+    // "prev" slides content down (backward in time). Resetting the
+    // attribute and forcing a reflow re-triggers the keyframe.
+    const flashSlot = (direction: "next" | "prev") => {
+      slotEl.removeAttribute("data-flash");
       void (slotEl as HTMLElement).offsetWidth;
-      slotEl.dataset.flash = "true";
+      slotEl.dataset.flash = direction;
     };
 
     prevBtn.addEventListener("click", () => {
       if (cursor === 0) return;
       cursor--;
-      flashSlot();
+      flashSlot("prev");
       renderSlot(slots[cursor]);
     });
 
@@ -253,7 +260,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       // Move within cached slots first.
       if (cursor < slots.length - 1) {
         cursor++;
-        flashSlot();
+        flashSlot("next");
         renderSlot(slots[cursor]);
         return;
       }
@@ -277,7 +284,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         }
         slots.push(slot);
         cursor++;
-        flashSlot();
+        flashSlot("next");
         renderSlot(slot); // re-enables and shows "↓" again
       } catch (err) {
         console.error("[busy-checker] nextSlot failed", err);
@@ -372,12 +379,14 @@ const WIDGET_HTML = `
   * { box-sizing: border-box; }
 
   #bc-root {
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+      "SF Pro Text", "Segoe UI Variable", "Segoe UI", Inter, system-ui,
+      sans-serif;
     width: 320px;
     color: #111827;
     background: #ffffff;
     border: 1px solid #e5e7eb;
-    border-radius: 10px;
+    border-radius: 12px;
     box-shadow:
       0 1px 2px rgba(0,0,0,0.04),
       0 12px 32px rgba(15, 23, 42, 0.10);
@@ -394,22 +403,22 @@ const WIDGET_HTML = `
     display: flex;
     align-items: flex-start;
     gap: 12px;
-    padding: 12px 14px 10px;
+    padding: 14px 14px 12px;
     border-bottom: 1px solid #f3f4f6;
   }
   #bc-header-text { flex: 1; min-width: 0; }
   #bc-label {
-    font-size: 10px;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.10em;
-    font-weight: 600;
+    font-size: 11px;
+    color: #9ca3af;
+    font-weight: 400;
+    letter-spacing: -0.01em;
   }
   #bc-name {
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 600;
+    letter-spacing: -0.015em;
     color: #111827;
-    margin-top: 3px;
+    margin-top: 2px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -461,11 +470,10 @@ const WIDGET_HTML = `
   #bc-root[data-status="busy"]      #bc-status-dot { background: #dc2626; }
   #bc-root[data-status="offhours"]  #bc-status-dot { background: #d97706; }
   #bc-status-text {
-    font-size: 10px;
+    font-size: 12px;
     color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 600;
+    font-weight: 500;
+    letter-spacing: -0.01em;
     transition: color 0.2s ease;
   }
 
@@ -500,11 +508,16 @@ const WIDGET_HTML = `
   }
 
   #bc-slot {
-    margin-top: 12px;
-    padding: 10px 12px;
+    margin-top: 14px;
+    padding: 14px;
     background: #fafafa;
     border: 1px solid #e5e7eb;
-    border-radius: 8px;
+    border-radius: 10px;
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+  #bc-slot:hover {
+    background: #f5f5f5;
+    border-color: #d1d5db;
   }
   #bc-slot:not([hidden]) {
     animation: bc-section-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
@@ -513,37 +526,54 @@ const WIDGET_HTML = `
     from { opacity: 0; transform: translateY(-4px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  /* Brief flash on the inner content whenever the slot changes (↑/↓ nav) */
-  #bc-slot[data-flash="true"] #bc-slot-time,
-  #bc-slot[data-flash="true"] #bc-slot-hint,
-  #bc-slot[data-flash="true"] #bc-dur-row {
-    animation: bc-slot-flash 0.25s ease-out;
+  /* Directional flash: ↓ (forward in time) slides up; ↑ slides down. */
+  #bc-slot[data-flash="next"] #bc-slot-time,
+  #bc-slot[data-flash="next"] #bc-slot-date,
+  #bc-slot[data-flash="next"] #bc-slot-hint,
+  #bc-slot[data-flash="next"] #bc-dur-row {
+    animation: bc-flash-up 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
-  @keyframes bc-slot-flash {
-    from { opacity: 0.2; transform: translateY(-3px); }
-    to   { opacity: 1;   transform: translateY(0); }
+  #bc-slot[data-flash="prev"] #bc-slot-time,
+  #bc-slot[data-flash="prev"] #bc-slot-date,
+  #bc-slot[data-flash="prev"] #bc-slot-hint,
+  #bc-slot[data-flash="prev"] #bc-dur-row {
+    animation: bc-flash-down 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
+  @keyframes bc-flash-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes bc-flash-down {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  /* Stagger inner elements so they don't all flip at once */
+  #bc-slot[data-flash] #bc-slot-date { animation-delay: 0.04s; }
+  #bc-slot[data-flash] #bc-slot-hint { animation-delay: 0.08s; }
+  #bc-slot[data-flash] #bc-dur-row   { animation-delay: 0.12s; }
+
   #bc-slot-head {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
+    gap: 12px;
   }
-  #bc-slot-label {
-    font-size: 10px;
-    color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.10em;
-    font-weight: 600;
-  }
+  #bc-slot-display { flex: 1; min-width: 0; }
   #bc-slot-nav { display: flex; gap: 2px; }
+  #bc-slot-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+  }
   #bc-slot-nav button {
     background: transparent;
     border: 1px solid #e5e7eb;
-    color: #6b7280;
-    width: 22px;
-    height: 22px;
-    border-radius: 5px;
-    font-size: 10px;
+    color: #9ca3af;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    font-size: 12px;
     line-height: 1;
     cursor: pointer;
     padding: 0;
@@ -562,16 +592,26 @@ const WIDGET_HTML = `
     cursor: not-allowed;
   }
   #bc-slot-time {
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 38px;
+    font-weight: 300;
+    letter-spacing: -0.04em;
+    line-height: 1;
     color: #111827;
-    margin-top: 6px;
     font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" on, "lnum" on;
+  }
+  #bc-slot-date {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 6px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
   }
   #bc-slot-hint {
     font-size: 11px;
-    color: #6b7280;
-    margin-top: 2px;
+    color: #9ca3af;
+    margin-top: 10px;
+    font-weight: 400;
     font-variant-numeric: tabular-nums;
   }
 
@@ -615,11 +655,10 @@ const WIDGET_HTML = `
   }
   #bc-form label {
     display: block;
-    font-size: 10px;
+    font-size: 11px;
     color: #6b7280;
-    text-transform: uppercase;
-    letter-spacing: 0.10em;
-    font-weight: 600;
+    font-weight: 500;
+    letter-spacing: -0.01em;
     margin-bottom: 6px;
   }
   #bc-title {
@@ -742,13 +781,15 @@ const WIDGET_HTML = `
     <p id="bc-reply">consultando agenda</p>
     <div id="bc-slot" hidden>
       <div id="bc-slot-head">
-        <div id="bc-slot-label">Próxima janela</div>
+        <div id="bc-slot-display">
+          <div id="bc-slot-time"></div>
+          <div id="bc-slot-date"></div>
+        </div>
         <div id="bc-slot-nav">
           <button id="bc-slot-prev" type="button" title="janela anterior" disabled>↑</button>
           <button id="bc-slot-next" type="button" title="próxima janela">↓</button>
         </div>
       </div>
-      <div id="bc-slot-time"></div>
       <div id="bc-slot-hint"></div>
     </div>
     <button id="bc-schedule" hidden type="button">Agendar nesta janela</button>
