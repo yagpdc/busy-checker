@@ -70,7 +70,7 @@ function openWidget(name: string): void {
 }
 
 type Slot = { start: string; end: string };
-type BusyInterval = { start: string; end: string };
+type CalendarEvent = { start: string; end: string; title: string | null };
 type Facts = {
   targetEmail: string;
   online: boolean;
@@ -86,9 +86,23 @@ type Facts = {
   suggestedSlot: Slot | null;
   outsideWorkingHours: boolean;
   workingHours: { start: number; end: number };
-  busyAround: BusyInterval[];
+  eventsAround: CalendarEvent[];
   meetingsToday: number | null;
 };
+
+// Stable color per title hash. Sober palette that reads well against light bg.
+const EVENT_COLORS = [
+  { bg: "rgba(96, 165, 250, 0.10)", bar: "#60a5fa" }, // blue
+  { bg: "rgba(52, 211, 153, 0.10)", bar: "#34d399" }, // green
+  { bg: "rgba(251, 191, 36, 0.12)", bar: "#fbbf24" }, // amber
+  { bg: "rgba(244, 114, 182, 0.10)", bar: "#f472b6" }, // pink
+  { bg: "rgba(167, 139, 250, 0.10)", bar: "#a78bfa" }, // violet
+];
+function colorFor(title: string): { bg: string; bar: string } {
+  let h = 0;
+  for (let i = 0; i < title.length; i++) h = (h * 31 + title.charCodeAt(i)) | 0;
+  return EVENT_COLORS[Math.abs(h) % EVENT_COLORS.length];
+}
 
 function formatTime(d: Date): string {
   return d.toLocaleTimeString("pt-BR", {
@@ -109,10 +123,20 @@ function formatCalendarParts(
       .replace(/\./g, "")
       .toLowerCase(),
     weekday: when
-      .toLocaleDateString("pt-BR", { timeZone: tz, weekday: "short" })
-      .replace(/\./g, "")
+      .toLocaleDateString("pt-BR", { timeZone: tz, weekday: "long" })
+      .replace(/-feira/g, "")
       .toLowerCase(),
   };
+}
+
+function formatTimeParts(d: Date): { hour: string; minute: string } {
+  const formatted = d.toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const [hour, minute] = formatted.split(":");
+  return { hour, minute };
 }
 
 const DURATION_OPTIONS_MIN = [15, 30, 45, 60, 90, 120];
@@ -125,7 +149,6 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
   const meetingsInfo = $("#bc-meetings-info") as HTMLElement;
   const statusText = $("#bc-status-text") as HTMLElement;
   const slotEl = $("#bc-slot") as HTMLElement;
-  const slotTime = $("#bc-slot-time") as HTMLElement;
   const scheduleBtn = $<HTMLButtonElement>("#bc-schedule");
   const form = $("#bc-form") as HTMLElement;
   const titleInput = $<HTMLInputElement>("#bc-title");
@@ -186,9 +209,9 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     if (!facts.suggestedSlot) return;
 
     // === Slot navigation state ===
-    type Entry = { slot: Slot; busy: BusyInterval[] };
+    type Entry = { slot: Slot; events: CalendarEvent[] };
     const entries: Entry[] = [
-      { slot: facts.suggestedSlot, busy: facts.busyAround ?? [] },
+      { slot: facts.suggestedSlot, events: facts.eventsAround ?? [] },
     ];
     let cursor = 0;
     let currentSlot = entries[cursor].slot;
@@ -199,19 +222,26 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     const prevBtn = $<HTMLButtonElement>("#bc-day-prev");
     const nextBtn = $<HTMLButtonElement>("#bc-day-next");
     const dayCenter = $("#bc-day-center") as HTMLElement;
-    const dayNum = $("#bc-day-num") as HTMLElement;
-    const dayMonth = $("#bc-day-month") as HTMLElement;
-    const stripEl = $("#bc-strip") as HTMLElement;
-    const stripTrack = $("#bc-strip-track") as HTMLElement;
+    const calMonth = $("#bc-cal-month") as HTMLElement;
+    const calDay = $("#bc-cal-day") as HTMLElement;
+    const hourEl = $("#bc-time-hour") as HTMLElement;
+    const minEl = $("#bc-time-minute") as HTMLElement;
+    const agendaEl = $("#bc-agenda") as HTMLElement;
 
     let displayedTime = new Date(currentSlot.start);
     let timeAnimHandle: number | null = null;
 
     const writeDate = (when: Date) => {
       const { day, month, weekday } = formatCalendarParts(when);
-      if (dayNum.textContent !== day) dayNum.textContent = day;
-      if (dayMonth.textContent !== month) dayMonth.textContent = month;
+      if (calDay.textContent !== day) calDay.textContent = day;
+      if (calMonth.textContent !== month) calMonth.textContent = month;
       if (dayCenter.textContent !== weekday) dayCenter.textContent = weekday;
+    };
+
+    const writeClock = (when: Date) => {
+      const { hour, minute } = formatTimeParts(when);
+      if (hourEl.textContent !== hour) hourEl.textContent = hour;
+      if (minEl.textContent !== minute) minEl.textContent = minute;
     };
 
     // Smoothly ticks the visible time + date from `from` to `to`.
@@ -234,78 +264,84 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         const currentMs = startMs + (endMs - startMs) * eased;
         const current = new Date(currentMs);
         displayedTime = current;
-        slotTime.textContent = formatTime(current);
+        writeClock(current);
         writeDate(current);
         if (raw < 1) {
           timeAnimHandle = requestAnimationFrame(tick);
         } else {
           timeAnimHandle = null;
           displayedTime = to;
-          slotTime.textContent = formatTime(to);
+          writeClock(to);
           writeDate(to);
         }
       };
       timeAnimHandle = requestAnimationFrame(tick);
     };
 
-    // Renders the agenda strip ±2h around the slot start.
-    const STRIP_RANGE_MS = 2 * 60 * 60 * 1000;
-    const renderStrip = (slot: Slot, busy: BusyInterval[]) => {
-      stripTrack.innerHTML = "";
+    // Renders the agenda as a vertical event list (Google Calendar-ish),
+    // with the suggested slot inserted in its chronological position.
+    const renderAgenda = (slot: Slot, events: CalendarEvent[]) => {
+      agendaEl.innerHTML = "";
+      type Item =
+        | { type: "event"; start: number; end: number; title: string }
+        | { type: "slot"; start: number; end: number };
       const slotStartMs = new Date(slot.start).getTime();
       const slotEndMs = new Date(slot.end).getTime();
-      const winStart = slotStartMs - STRIP_RANGE_MS;
-      const winEnd = slotStartMs + STRIP_RANGE_MS;
-      const totalMs = winEnd - winStart;
+      const items: Item[] = events.map((e) => ({
+        type: "event",
+        start: new Date(e.start).getTime(),
+        end: new Date(e.end).getTime(),
+        title: (e.title ?? "").trim() || "(sem título)",
+      }));
+      items.push({ type: "slot", start: slotStartMs, end: slotEndMs });
+      items.sort((a, b) => a.start - b.start);
 
-      // Hour tick marks
-      const hourMs = 60 * 60 * 1000;
-      const firstTick = Math.ceil(winStart / hourMs) * hourMs;
-      for (let t = firstTick; t < winEnd; t += hourMs) {
-        const pct = ((t - winStart) / totalMs) * 100;
-        const tickEl = document.createElement("div");
-        tickEl.className = "bc-strip-tick";
-        tickEl.style.left = `${pct}%`;
-        stripTrack.appendChild(tickEl);
-        const label = document.createElement("div");
-        label.className = "bc-strip-tick-label";
-        label.style.left = `${pct}%`;
-        label.textContent = formatTime(new Date(t));
-        stripTrack.appendChild(label);
+      // Cap to 6 items, centered around the slot
+      const slotIdx = items.findIndex((it) => it.type === "slot");
+      const max = 6;
+      let start = Math.max(0, slotIdx - 2);
+      let end = Math.min(items.length, start + max);
+      if (end - start < max) start = Math.max(0, end - max);
+      const visible = items.slice(start, end);
+
+      for (const it of visible) {
+        const row = document.createElement("div");
+        row.className = "bc-ev";
+        const timeText = formatTime(new Date(it.start));
+        if (it.type === "slot") {
+          row.classList.add("bc-ev-slot");
+          const slotMin = Math.floor((it.end - it.start) / 60000);
+          const slotTitle =
+            slotMin >= 60
+              ? `slot livre · ${Math.floor(slotMin / 60)}h${slotMin % 60 ? ` ${slotMin % 60}min` : ""}`
+              : `slot livre · ${slotMin}min`;
+          row.innerHTML = `
+            <span class="bc-ev-bar"></span>
+            <span class="bc-ev-time">${timeText}</span>
+            <span class="bc-ev-title"></span>
+          `;
+          (row.querySelector(".bc-ev-title") as HTMLElement).textContent =
+            slotTitle;
+        } else {
+          const { bg, bar } = colorFor(it.title);
+          row.style.background = bg;
+          row.innerHTML = `
+            <span class="bc-ev-bar" style="background:${bar}"></span>
+            <span class="bc-ev-time">${timeText}</span>
+            <span class="bc-ev-title"></span>
+          `;
+          (row.querySelector(".bc-ev-title") as HTMLElement).textContent =
+            it.title;
+        }
+        agendaEl.appendChild(row);
       }
-
-      // Busy blocks (clipped to window)
-      for (const b of busy) {
-        const bs = new Date(b.start).getTime();
-        const be = new Date(b.end).getTime();
-        const vs = Math.max(bs, winStart);
-        const ve = Math.min(be, winEnd);
-        if (ve <= vs) continue;
-        const leftPct = ((vs - winStart) / totalMs) * 100;
-        const widthPct = ((ve - vs) / totalMs) * 100;
-        const block = document.createElement("div");
-        block.className = "bc-strip-busy";
-        block.style.left = `${leftPct}%`;
-        block.style.width = `${widthPct}%`;
-        stripTrack.appendChild(block);
-      }
-
-      // Suggested slot (dashed rectangle)
-      const slotLeftPct = ((slotStartMs - winStart) / totalMs) * 100;
-      const slotEndClipped = Math.min(slotEndMs, winEnd);
-      const slotWidthPct = ((slotEndClipped - slotStartMs) / totalMs) * 100;
-      const slotBlock = document.createElement("div");
-      slotBlock.className = "bc-strip-slot";
-      slotBlock.style.left = `${slotLeftPct}%`;
-      slotBlock.style.width = `${slotWidthPct}%`;
-      stripTrack.appendChild(slotBlock);
     };
 
-    const fadeStripTo = (slot: Slot, busy: BusyInterval[]) => {
-      stripEl.dataset.fading = "true";
+    const fadeAgendaTo = (slot: Slot, events: CalendarEvent[]) => {
+      slotEl.dataset.fading = "true";
       window.setTimeout(() => {
-        renderStrip(slot, busy);
-        stripEl.dataset.fading = "false";
+        renderAgenda(slot, events);
+        slotEl.dataset.fading = "false";
       }, 180);
     };
 
@@ -346,11 +382,11 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
           after: currentSlot.end,
         });
         if (res?.ok) {
-          const { slot, busyAround } = res.data as {
+          const { slot, eventsAround: nextEvents } = res.data as {
             slot: Slot | null;
-            busyAround: BusyInterval[];
+            eventsAround: CalendarEvent[];
           };
-          if (slot) entries.push({ slot, busy: busyAround ?? [] });
+          if (slot) entries.push({ slot, events: nextEvents ?? [] });
           else noMoreSlots = true;
         }
       } catch (err) {
@@ -370,13 +406,13 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
 
       if (fromTime) {
         animateTimeTo(fromTime, start);
-        fadeStripTo(entry.slot, entry.busy);
+        fadeAgendaTo(entry.slot, entry.events);
       } else {
         if (timeAnimHandle !== null) cancelAnimationFrame(timeAnimHandle);
-        slotTime.textContent = formatTime(start);
+        writeClock(start);
         writeDate(start);
         displayedTime = start;
-        renderStrip(entry.slot, entry.busy);
+        renderAgenda(entry.slot, entry.events);
       }
 
       // Duration chips for the schedule form (capped to gap size)
@@ -705,87 +741,138 @@ const WIDGET_HTML = `
     to   { opacity: 1; transform: translateX(0); }
   }
 
-  /* === Hero: big day number + big time === */
-  #bc-hero {
+  /* === Clock row: calendar tile + flip-clock cards, justify-between === */
+  #bc-clock-row {
     display: flex;
-    align-items: baseline;
-    gap: 14px;
-    margin: 4px 0 2px;
-  }
-  #bc-day-num {
-    font-size: 44px;
-    font-weight: 300;
-    letter-spacing: -0.04em;
-    line-height: 1;
-    color: #111827;
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" on, "lnum" on;
-  }
-  #bc-slot-time {
-    font-size: 44px;
-    font-weight: 300;
-    letter-spacing: -0.03em;
-    line-height: 1;
-    color: #111827;
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" on, "lnum" on;
-  }
-  #bc-day-month {
-    font-size: 11px;
-    color: #9ca3af;
-    letter-spacing: -0.01em;
-    text-transform: lowercase;
-    margin-bottom: 12px;
+    align-items: center;
+    justify-content: space-between;
+    margin: 4px 0 14px;
   }
 
-  /* === Agenda strip === */
-  #bc-strip {
+  /* Calendar tile (date) */
+  #bc-cal-tile {
+    width: 56px;
+    height: 60px;
+    border-radius: 9px;
+    overflow: hidden;
+    border: 1px solid #d4d4d8;
+    background: #ffffff;
+    flex-shrink: 0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+  }
+  #bc-cal-month {
+    background: #18181b;
+    color: #fafafa;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.10em;
+    text-align: center;
+    padding: 4px 0 3px;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+  #bc-cal-day {
+    flex: 1;
+    font-size: 26px;
+    font-weight: 500;
+    letter-spacing: -0.03em;
+    color: #18181b;
+    text-align: center;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" on, "lnum" on;
+    background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+  }
+
+  /* Flip-clock cards (HH MM) */
+  #bc-flip-clock {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+  .bc-flip-card {
+    background: #ffffff;
+    border: 1px solid #d4d4d8;
+    border-radius: 7px;
+    width: 52px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    font-weight: 700;
+    color: #111827;
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" on, "lnum" on;
+    line-height: 1;
     position: relative;
-    height: 52px;
-    background: #fafafa;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     overflow: hidden;
   }
-  #bc-strip-track {
+  /* Hairline horizontal split — mimics the seam between top/bottom flap */
+  .bc-flip-card::after {
+    content: "";
     position: absolute;
-    inset: 0;
+    left: 0; right: 0;
+    top: 50%;
+    height: 1px;
+    background: rgba(0,0,0,0.08);
+    pointer-events: none;
+  }
+
+  /* === Agenda (Google Calendar-style event list) === */
+  #bc-agenda {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
     transition: opacity 0.18s ease;
   }
-  #bc-strip[data-fading="true"] #bc-strip-track { opacity: 0; }
-
-  .bc-strip-tick {
-    position: absolute;
-    top: 4px;
-    bottom: 14px;
-    width: 1px;
-    background: rgba(0,0,0,0.05);
+  #bc-slot[data-fading="true"] #bc-agenda { opacity: 0; }
+  .bc-ev {
+    display: grid;
+    grid-template-columns: 3px 44px 1fr;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 10px 6px 6px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.02);
+    min-height: 28px;
   }
-  .bc-strip-tick-label {
-    position: absolute;
-    bottom: 2px;
-    font-size: 9px;
-    color: #a1a1aa;
-    transform: translateX(-50%);
+  .bc-ev-bar {
+    align-self: stretch;
+    border-radius: 2px;
+  }
+  .bc-ev-time {
+    font-size: 11px;
+    color: #6b7280;
     font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" on;
     letter-spacing: -0.02em;
   }
-  .bc-strip-busy {
-    position: absolute;
-    top: 10px;
-    bottom: 16px;
-    background: #d4d4d8;
-    border-radius: 3px;
+  .bc-ev-title {
+    font-size: 12px;
+    color: #111827;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: -0.01em;
   }
-  .bc-strip-slot {
-    position: absolute;
-    top: 6px;
-    bottom: 12px;
+  /* Suggested slot looks distinct: dashed border, no fill, bold time */
+  .bc-ev.bc-ev-slot {
+    background: transparent;
     border: 1.5px dashed #111827;
-    border-radius: 5px;
-    background: rgba(17, 24, 39, 0.04);
-    box-sizing: border-box;
+    padding: 5px 9px 5px 5px;
   }
+  .bc-ev.bc-ev-slot .bc-ev-bar { background: transparent; }
+  .bc-ev.bc-ev-slot .bc-ev-time { color: #111827; font-weight: 600; }
+  .bc-ev.bc-ev-slot .bc-ev-title { font-weight: 600; }
 
   #bc-schedule {
     width: 100%;
@@ -958,12 +1045,17 @@ const WIDGET_HTML = `
         <span id="bc-day-center" class="bc-day-c"></span>
         <button id="bc-day-next" class="bc-day-side" type="button"></button>
       </div>
-      <div id="bc-hero">
-        <span id="bc-day-num"></span>
-        <span id="bc-slot-time"></span>
+      <div id="bc-clock-row">
+        <div id="bc-cal-tile" aria-hidden="true">
+          <div id="bc-cal-month"></div>
+          <div id="bc-cal-day"></div>
+        </div>
+        <div id="bc-flip-clock" aria-hidden="true">
+          <div class="bc-flip-card" id="bc-time-hour"></div>
+          <div class="bc-flip-card" id="bc-time-minute"></div>
+        </div>
       </div>
-      <div id="bc-day-month"></div>
-      <div id="bc-strip" aria-hidden="true"><div id="bc-strip-track"></div></div>
+      <div id="bc-agenda"></div>
     </div>
     <button id="bc-schedule" hidden type="button">Agendar nesta janela</button>
     <div id="bc-form" hidden>

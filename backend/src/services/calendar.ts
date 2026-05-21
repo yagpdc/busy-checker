@@ -215,19 +215,23 @@ export async function nextFreeSlot(
   return null;
 }
 
-export type BusyInterval = { start: string; end: string };
+export type CalendarEventLite = {
+  start: string;
+  end: string;
+  title: string | null;
+};
 
 /**
- * Lists `targetEmail`'s blocking intervals around `center`. Used to draw the
- * "agenda strip" — only times, no titles. Falls back to FreeBusy when
- * events.list is denied.
+ * Lists `targetEmail`'s blocking events around `center`, with titles
+ * when available. Used to draw a Google-Calendar-style agenda preview.
+ * Falls back to FreeBusy (no titles) when event-detail access is denied.
  */
-export async function busyIntervalsAround(
+export async function eventsAround(
   asker: OAuth2Client,
   targetEmail: string,
   center: Date,
-  rangeMs: number = 2 * 60 * 60 * 1000,
-): Promise<BusyInterval[]> {
+  rangeMs: number = 3 * 60 * 60 * 1000,
+): Promise<CalendarEventLite[]> {
   const calendar = google.calendar({ version: "v3", auth: asker });
   const timeMin = new Date(center.getTime() - rangeMs).toISOString();
   const timeMax = new Date(center.getTime() + rangeMs).toISOString();
@@ -243,16 +247,17 @@ export async function busyIntervalsAround(
     });
     return (data.items ?? [])
       .filter(blocksTime)
-      .map((ev): BusyInterval | null => {
+      .map((ev): CalendarEventLite | null => {
         const s = ev.start?.dateTime ?? ev.start?.date;
         const e = ev.end?.dateTime ?? ev.end?.date;
         if (!s || !e) return null;
         return {
           start: new Date(s).toISOString(),
           end: new Date(e).toISOString(),
+          title: ev.summary ?? null,
         };
       })
-      .filter((x): x is BusyInterval => x !== null);
+      .filter((x): x is CalendarEventLite => x !== null);
   } catch (err: unknown) {
     const code = (err as { code?: number }).code;
     if (code !== 403 && code !== 404) throw err;
@@ -261,7 +266,7 @@ export async function busyIntervalsAround(
     });
     return (fb.data.calendars?.[targetEmail]?.busy ?? [])
       .filter((b): b is { start: string; end: string } => !!b.start && !!b.end)
-      .map((b) => ({ start: b.start, end: b.end }));
+      .map((b) => ({ start: b.start, end: b.end, title: null }));
   }
 }
 

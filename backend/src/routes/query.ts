@@ -3,8 +3,8 @@ import { z } from "zod";
 import { requireSession } from "../middleware/session.js";
 import { clientForUser } from "../services/google.js";
 import {
-  busyIntervalsAround,
   currentMeeting,
+  eventsAround,
   meetingsTodayCount,
   nextFreeSlot,
 } from "../services/calendar.js";
@@ -140,8 +140,8 @@ router.post("/", requireSession, async (req, res) => {
         : null,
       outsideWorkingHours: facts.outsideWorkingHours,
       workingHours: facts.workingHours,
-      busyAround: facts.suggestedSlot
-        ? await busyIntervalsAround(asker, targetEmail, facts.suggestedSlot.start).catch(() => [])
+      eventsAround: facts.suggestedSlot
+        ? await eventsAround(asker, targetEmail, facts.suggestedSlot.start).catch(() => [])
         : [],
       meetingsToday: await meetingsTodayCount(asker, targetEmail).catch(() => null),
     },
