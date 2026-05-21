@@ -138,8 +138,12 @@ let widgetPath: string | null = null;
 
 // Returns true only for 1:1 Direct Messages. Spaces / rooms / meeting
 // chats live at /space/ or /room/ URLs and never get the widget.
-function isDirectMessageUrl(path: string): boolean {
-  return /\/dm\//.test(path);
+//
+// Use the full URL because Google routes some chats through hash fragments
+// (the Gmail-embedded variant) — `/dm/` doesn't always show up in
+// location.pathname.
+function isDirectMessageUrl(): boolean {
+  return /\/dm\//.test(location.href);
 }
 
 function currentConversationName(): string | null {
@@ -168,6 +172,26 @@ function currentConversationName(): string | null {
   return name;
 }
 
+// Logs the first time the widget decides to skip a render. After that we
+// stay quiet because reactToState runs on every observer tick + every 2s
+// poll — without dedup the console would be spammed.
+let lastSkipReason: string | null = null;
+function debugSkip(reason: string, detail?: unknown): void {
+  if (lastSkipReason === reason) return;
+  lastSkipReason = reason;
+  console.debug(
+    "[busy-checker] not rendering widget:",
+    reason,
+    detail ?? "",
+    "href=",
+    location.href,
+  );
+}
+function debugMount(reason: string): void {
+  lastSkipReason = null;
+  console.debug("[busy-checker]", reason, "href=", location.href);
+}
+
 function reactToState(): void {
   // Two kill-switches stacked AND. widgetEnabled is the permanent
   // "never show" from settings; widgetOpen is the session-scoped
@@ -178,18 +202,20 @@ function reactToState(): void {
       removeWidget();
       widgetPath = null;
     }
+    debugSkip(!widgetEnabled ? "widgetEnabled=false (settings)" : "widgetOpen=false (closed for session)");
     return;
   }
 
-  const path = location.pathname;
+  const key = location.href;
   const widgetExists = !!document.getElementById(WIDGET_ID);
 
   // Not in a DM → no widget, period.
-  if (!isDirectMessageUrl(path)) {
+  if (!isDirectMessageUrl()) {
     if (widgetExists) {
       removeWidget();
       widgetPath = null;
     }
+    debugSkip("URL does not contain /dm/", location.pathname);
     return;
   }
 
@@ -197,7 +223,7 @@ function reactToState(): void {
   // critical no-flicker path: it short-circuits on every tick even when
   // the title is briefly mutated by unread-counter updates, notifications,
   // or typing indicators in other conversations.
-  if (widgetPath === path && widgetExists) return;
+  if (widgetPath === key && widgetExists) return;
 
   // URL changed (or widget was torn down) — need to (re)mount. Read the
   // title now to know whose calendar to query.
@@ -206,12 +232,14 @@ function reactToState(): void {
     // Title hasn't settled yet (Chat sometimes shows "Google Chat"
     // momentarily during route changes). Don't tear down what we have —
     // wait for the next tick.
-    if (widgetExists && widgetPath === path) return;
+    if (widgetExists && widgetPath === key) return;
+    debugSkip("title not resolvable to a person", document.title);
     return;
   }
 
   removeWidget();
-  widgetPath = path;
+  widgetPath = key;
+  debugMount(`mounting widget for "${name}"`);
   openWidget(name);
 }
 
