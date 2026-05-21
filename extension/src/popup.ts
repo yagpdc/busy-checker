@@ -472,8 +472,23 @@ function isUpToDate(installed: string, latest: string): boolean {
   return true;
 }
 
-$<HTMLButtonElement>("update-modal-close").addEventListener("click", () => {
+function closeUpdateModal(): void {
   $<HTMLElement>("update-modal").hidden = true;
+}
+
+$<HTMLButtonElement>("update-modal-close").addEventListener(
+  "click",
+  closeUpdateModal,
+);
+// Click on the dark backdrop (anywhere outside the card) also closes.
+$<HTMLElement>("update-modal").addEventListener("click", (ev) => {
+  if (ev.target === ev.currentTarget) closeUpdateModal();
+});
+// Esc closes too.
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && !$<HTMLElement>("update-modal").hidden) {
+    closeUpdateModal();
+  }
 });
 
 // === Bootstrap ===
