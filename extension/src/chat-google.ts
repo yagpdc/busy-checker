@@ -188,15 +188,60 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     const nextBtn = $<HTMLButtonElement>("#bc-slot-next");
     const slotDate = $("#bc-slot-date") as HTMLElement;
 
-    const renderSlot = (slot: Slot) => {
+    // The time displayed right now (may differ from currentSlot.start while
+    // animating). Used as the "from" point when chaining nav clicks mid-flight.
+    let displayedTime = new Date(currentSlot.start);
+    let timeAnimHandle: number | null = null;
+
+    // Smoothly ticks the visible time from `from` to `to` with an ease-in-out
+    // cubic curve. Looks like a flip-clock cycling through minutes.
+    const animateTimeTo = (from: Date, to: Date) => {
+      if (timeAnimHandle !== null) cancelAnimationFrame(timeAnimHandle);
+      const startMs = from.getTime();
+      const endMs = to.getTime();
+      const diffAbsMin = Math.abs(endMs - startMs) / 60000;
+      // 300ms floor for tiny jumps; 750ms ceiling for multi-day. Sqrt scales
+      // so 3h reads as quicker than 3 days, without being proportional.
+      const duration = Math.min(750, Math.max(300, 200 + Math.sqrt(diffAbsMin) * 20));
+      const startPerf = performance.now();
+      const tick = (now: number) => {
+        const raw = Math.min(1, (now - startPerf) / duration);
+        // ease-in-out cubic: slow start, accelerate, decelerate to land
+        const eased = raw < 0.5
+          ? 4 * raw * raw * raw
+          : 1 - Math.pow(-2 * raw + 2, 3) / 2;
+        const currentMs = startMs + (endMs - startMs) * eased;
+        const current = new Date(currentMs);
+        displayedTime = current;
+        slotTime.textContent = formatTime(current);
+        if (raw < 1) {
+          timeAnimHandle = requestAnimationFrame(tick);
+        } else {
+          timeAnimHandle = null;
+          displayedTime = to;
+          slotTime.textContent = formatTime(to);
+        }
+      };
+      timeAnimHandle = requestAnimationFrame(tick);
+    };
+
+    const renderSlot = (slot: Slot, animateTime = false) => {
+      const fromTime = animateTime ? displayedTime : null;
       currentSlot = slot;
       const start = new Date(slot.start);
       const end = new Date(slot.end);
       const gapMin = Math.floor((end.getTime() - start.getTime()) / 60000);
 
-      const { time, date } = formatSlotParts(slot);
-      slotTime.textContent = time;
+      const { date } = formatSlotParts(slot);
       slotDate.textContent = date;
+
+      if (fromTime) {
+        animateTimeTo(fromTime, start);
+      } else {
+        if (timeAnimHandle !== null) cancelAnimationFrame(timeAnimHandle);
+        slotTime.textContent = formatTime(start);
+        displayedTime = start;
+      }
       const durText =
         gapMin >= 60
           ? `${Math.floor(gapMin / 60)}h${gapMin % 60 ? ` ${gapMin % 60}min` : ""}`
@@ -253,7 +298,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       if (cursor === 0) return;
       cursor--;
       flashSlot("prev");
-      renderSlot(slots[cursor]);
+      renderSlot(slots[cursor], true);
     });
 
     nextBtn.addEventListener("click", async () => {
@@ -261,7 +306,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       if (cursor < slots.length - 1) {
         cursor++;
         flashSlot("next");
-        renderSlot(slots[cursor]);
+        renderSlot(slots[cursor], true);
         return;
       }
       if (noMoreSlots) return;
@@ -285,7 +330,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         slots.push(slot);
         cursor++;
         flashSlot("next");
-        renderSlot(slot); // re-enables and shows "↓" again
+        renderSlot(slot, true); // re-enables and shows "↓" again
       } catch (err) {
         console.error("[busy-checker] nextSlot failed", err);
         nextBtn.disabled = false;
@@ -526,14 +571,13 @@ const WIDGET_HTML = `
     from { opacity: 0; transform: translateY(-4px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  /* Directional flash: ↓ (forward in time) slides up; ↑ slides down. */
-  #bc-slot[data-flash="next"] #bc-slot-time,
+  /* The time itself animates digit-by-digit in JS (flip-clock ticking).
+     The supporting elements just slide in/out directionally. */
   #bc-slot[data-flash="next"] #bc-slot-date,
   #bc-slot[data-flash="next"] #bc-slot-hint,
   #bc-slot[data-flash="next"] #bc-dur-row {
     animation: bc-flash-up 0.34s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
-  #bc-slot[data-flash="prev"] #bc-slot-time,
   #bc-slot[data-flash="prev"] #bc-slot-date,
   #bc-slot[data-flash="prev"] #bc-slot-hint,
   #bc-slot[data-flash="prev"] #bc-dur-row {
@@ -547,10 +591,10 @@ const WIDGET_HTML = `
     from { opacity: 0; transform: translateY(-10px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  /* Stagger inner elements so they don't all flip at once */
-  #bc-slot[data-flash] #bc-slot-date { animation-delay: 0.04s; }
-  #bc-slot[data-flash] #bc-slot-hint { animation-delay: 0.08s; }
-  #bc-slot[data-flash] #bc-dur-row   { animation-delay: 0.12s; }
+  /* Stagger so the supporting info comes in after the ticking starts */
+  #bc-slot[data-flash] #bc-slot-date { animation-delay: 0.10s; }
+  #bc-slot[data-flash] #bc-slot-hint { animation-delay: 0.14s; }
+  #bc-slot[data-flash] #bc-dur-row   { animation-delay: 0.18s; }
 
   #bc-slot-head {
     display: flex;
