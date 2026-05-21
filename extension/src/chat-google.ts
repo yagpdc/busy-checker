@@ -83,6 +83,14 @@ function openWidget(name: string): void {
 }
 
 type Slot = { start: string; end: string };
+type DayEvent = {
+  id: string;
+  title: string | null;
+  start: string;
+  end: string;
+  kind: "meeting" | "outOfOffice" | "focusTime";
+  allDay: boolean;
+};
 type Facts = {
   targetEmail: string;
   online: boolean;
@@ -98,7 +106,16 @@ type Facts = {
   suggestedSlot: Slot | null;
   outsideWorkingHours: boolean;
   workingHours: { start: number; end: number };
+  dayEvents: DayEvent[];
 };
+
+// Stable color from a title hash. Sober palette so the dark tile stays calm.
+const EVENT_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa"];
+function colorFor(title: string): string {
+  let h = 0;
+  for (let i = 0; i < title.length; i++) h = (h * 31 + title.charCodeAt(i)) | 0;
+  return EVENT_COLORS[Math.abs(h) % EVENT_COLORS.length];
+}
 
 function formatTime(d: Date): string {
   return d.toLocaleTimeString("pt-BR", {
@@ -185,8 +202,10 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
 
     // === Slot navigation state ===
     // We start with the first slot from /query; arrows walk a locally-cached
-    // list, fetching forward from /slots/next on demand.
+    // list, fetching forward from /slots/next on demand. Events for each
+    // slot's day are cached alongside.
     const slots: Slot[] = [facts.suggestedSlot];
+    const eventsBySlotIndex: DayEvent[][] = [facts.dayEvents ?? []];
     let cursor = 0;
     let currentSlot = slots[cursor];
     let selectedDur = 30;
@@ -196,6 +215,36 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     const slotDay = $("#bc-cal-day") as HTMLElement;
     const slotMonth = $("#bc-cal-month") as HTMLElement;
     const slotWeekday = $("#bc-slot-weekday") as HTMLElement;
+    const eventsList = $("#bc-events") as HTMLElement;
+
+    const renderEvents = (events: DayEvent[]) => {
+      eventsList.innerHTML = "";
+      const visible = events.slice(0, 4);
+      visible.forEach((ev) => {
+        const row = document.createElement("div");
+        row.className = "bc-event";
+        const titleText = ev.title?.trim() || "(sem título)";
+        const color = colorFor(titleText);
+        const timeText = ev.allDay
+          ? "dia"
+          : formatTime(new Date(ev.start));
+        row.innerHTML = `
+          <span class="bc-event-bar" style="background:${color}"></span>
+          <span class="bc-event-time">${timeText}</span>
+          <span class="bc-event-title"></span>
+        `;
+        (row.querySelector(".bc-event-title") as HTMLElement).textContent =
+          titleText;
+        eventsList.appendChild(row);
+      });
+      if (events.length > visible.length) {
+        const more = document.createElement("div");
+        more.className = "bc-event-more";
+        more.textContent = `+ ${events.length - visible.length} eventos`;
+        eventsList.appendChild(more);
+      }
+      eventsList.hidden = events.length === 0;
+    };
 
     // The time displayed right now (may differ from currentSlot.start while
     // animating). Used as the "from" point when chaining nav clicks mid-flight.
@@ -261,6 +310,9 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         writeCalendar(start);
         displayedTime = start;
       }
+
+      // Events for the slot's day (cached per cursor)
+      renderEvents(eventsBySlotIndex[cursor] ?? []);
       const durText =
         gapMin >= 60
           ? `${Math.floor(gapMin / 60)}h${gapMin % 60 ? ` ${gapMin % 60}min` : ""}`
@@ -340,13 +392,17 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
           after: currentSlot.end,
         });
         if (!res?.ok) throw new Error(res?.error ?? "unknown");
-        const slot = (res.data as { slot: Slot | null }).slot;
+        const { slot, dayEvents: nextDayEvents } = res.data as {
+          slot: Slot | null;
+          dayEvents: DayEvent[];
+        };
         if (!slot) {
           noMoreSlots = true;
           renderSlot(currentSlot); // updates button to "—" and hint
           return;
         }
         slots.push(slot);
+        eventsBySlotIndex.push(nextDayEvents ?? []);
         cursor++;
         flashSlot("next");
         renderSlot(slot, true); // re-enables and shows "↓" again
@@ -671,6 +727,60 @@ const WIDGET_HTML = `
     padding: 14px 16px;
     min-height: 76px;
   }
+
+  /* === Events list === */
+  #bc-events {
+    margin-top: 10px;
+    background: #18181b;
+    border-radius: 12px;
+    padding: 12px 14px;
+    color: #fafafa;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  #bc-events:not([hidden]) {
+    animation: bc-section-in 0.4s 0.05s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .bc-event {
+    display: grid;
+    grid-template-columns: 3px 42px 1fr;
+    gap: 10px;
+    align-items: center;
+    min-height: 18px;
+  }
+  .bc-event-bar {
+    height: 22px;
+    border-radius: 2px;
+    align-self: center;
+  }
+  .bc-event-time {
+    font-size: 11px;
+    color: #a1a1aa;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" on;
+  }
+  .bc-event-title {
+    font-size: 12px;
+    color: #fafafa;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .bc-event-more {
+    font-size: 11px;
+    color: #71717a;
+    padding-left: 13px;
+    margin-top: 2px;
+  }
+  #bc-slot[data-flash="next"] #bc-events,
+  #bc-slot[data-flash="prev"] #bc-events {
+    animation-delay: 0.10s;
+  }
+  #bc-slot[data-flash="next"] #bc-events { animation: bc-flash-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  #bc-slot[data-flash="prev"] #bc-events { animation: bc-flash-down 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
   #bc-slot-nav { display: flex; gap: 2px; }
   #bc-slot-nav {
     display: flex;
@@ -905,6 +1015,7 @@ const WIDGET_HTML = `
           <div id="bc-slot-time"></div>
         </div>
       </div>
+      <div id="bc-events" hidden></div>
       <div id="bc-slot-hint"></div>
     </div>
     <button id="bc-schedule" hidden type="button">Agendar nesta janela</button>
