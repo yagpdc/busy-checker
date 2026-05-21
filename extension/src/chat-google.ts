@@ -128,13 +128,20 @@ function textColorFor(hex: string): string {
 
 // === URL / title watcher ===
 //
-// State is keyed by URL pathname, not by title. Google Chat mutates
-// document.title a lot — unread counts, typing indicators, notifications
-// from other conversations all rewrite it. If we used the title as the
-// dedup key we'd tear down and remount the widget every few seconds (the
-// "flickering" the user reported). The pathname is the only stable signal
-// for "which conversation is open."
-let widgetPath: string | null = null;
+// State is keyed by URL, not by title. Google Chat mutates document.title
+// a lot — unread counts, typing indicators, notifications from other
+// conversations all rewrite it. If we used the title as the dedup key
+// we'd tear down and remount the widget every few seconds (the "flicker").
+//
+// `staleName` exists because the URL changes BEFORE the title updates
+// when the user switches DMs. Without it, we'd tear down the previous
+// widget on URL change, then immediately remount it under the new URL
+// (because the title still says the old person's name). Recording the
+// previous mountedName as `staleName` makes us wait for the title to
+// actually update to a different person before mounting again.
+let mountedUrl: string | null = null;
+let mountedName: string | null = null;
+let staleName: string | null = null;
 
 // Returns true when we're inside a conversation page on Chat. The URL
 // scheme `/app/chat/<id>` is shared between DMs and meeting/group chats,
@@ -202,45 +209,68 @@ function reactToState(): void {
   if (!widgetEnabled || !widgetOpen) {
     if (document.getElementById(WIDGET_ID)) {
       removeWidget();
-      widgetPath = null;
+      mountedUrl = null;
+      mountedName = null;
+      staleName = null;
     }
-    debugSkip(!widgetEnabled ? "widgetEnabled=false (settings)" : "widgetOpen=false (closed for session)");
+    debugSkip(
+      !widgetEnabled
+        ? "widgetEnabled=false (settings)"
+        : "widgetOpen=false (closed for session)",
+    );
     return;
   }
 
-  const key = location.href;
+  const url = location.href;
   const widgetExists = !!document.getElementById(WIDGET_ID);
 
-  // Not in a DM → no widget, period.
+  // Not in a chat URL → no widget, period.
   if (!isDirectMessageUrl()) {
     if (widgetExists) {
       removeWidget();
-      widgetPath = null;
+      mountedUrl = null;
+      mountedName = null;
+      staleName = null;
     }
-    debugSkip("URL does not contain /dm/", location.pathname);
+    debugSkip("URL not a chat conversation", location.pathname);
     return;
   }
 
-  // Same DM URL and widget already mounted → leave it alone. This is the
-  // critical no-flicker path: it short-circuits on every tick even when
-  // the title is briefly mutated by unread-counter updates, notifications,
-  // or typing indicators in other conversations.
-  if (widgetPath === key && widgetExists) return;
+  // URL changed since we mounted → the mounted widget is for the wrong
+  // person. Tear it down and remember which name was "current" so we
+  // don't immediately remount with the same one (the title typically
+  // lags the URL by 1-2 ticks when switching DMs).
+  if (mountedUrl !== null && mountedUrl !== url) {
+    staleName = mountedName;
+    removeWidget();
+    mountedUrl = null;
+    mountedName = null;
+  }
 
-  // URL changed (or widget was torn down) — need to (re)mount. Read the
-  // title now to know whose calendar to query.
+  // Same URL and widget already mounted → leave it alone. This is the
+  // no-flicker path: short-circuits on every tick even when the title
+  // is briefly mutated by unread-counter updates or notifications.
+  if (widgetExists && mountedUrl === url) return;
+
+  // Read the title to figure out whose calendar to query.
   const name = currentConversationName();
   if (!name) {
-    // Title hasn't settled yet (Chat sometimes shows "Google Chat"
-    // momentarily during route changes). Don't tear down what we have —
-    // wait for the next tick.
-    if (widgetExists && widgetPath === key) return;
     debugSkip("title not resolvable to a person", document.title);
     return;
   }
 
-  removeWidget();
-  widgetPath = key;
+  // Title still shows the previous DM's person (the lag described above).
+  // Wait for it to update before mounting — otherwise we'd render the
+  // wrong calendar against the new URL.
+  if (staleName !== null && name === staleName) {
+    debugSkip("title lag — still on previous DM's name", name);
+    return;
+  }
+
+  removeWidget(); // belt + suspenders
+  mountedUrl = url;
+  mountedName = name;
+  staleName = null;
   debugMount(`mounting widget for "${name}"`);
   openWidget(name);
 }
@@ -293,7 +323,9 @@ function openWidget(name: string): void {
 // re-mounts the widget on whichever Chat tab is open.
 async function closeWidgetForSession(): Promise<void> {
   widgetOpen = false;
-  widgetPath = null;
+  mountedUrl = null;
+  mountedName = null;
+  staleName = null;
   removeWidget();
   try {
     await chrome.storage.session.set({ widgetOpen: false });
