@@ -436,11 +436,15 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
 
       const positioned = layoutColumns(items);
 
+      // 1px shaved off each block's bottom so consecutive events have a
+      // visible seam (e.g., "10:00 ends" → "10:00 starts" reads as two
+      // distinct events, not one taller one).
+      const BLOCK_GAP_PX = 1;
       for (const { item, column, columns } of positioned) {
         const topPx = ((item.startMs - winStart) / 60000) * PX_PER_MIN;
         const heightPx = Math.max(
           MIN_EVENT_HEIGHT,
-          ((item.endMs - item.startMs) / 60000) * PX_PER_MIN,
+          ((item.endMs - item.startMs) / 60000) * PX_PER_MIN - BLOCK_GAP_PX,
         );
         const widthPct = 100 / columns;
         const leftPct = column * widthPct;
