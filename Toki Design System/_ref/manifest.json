@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Toki",
-  "version": "0.4.0",
+  "version": "0.1.0",
   "description": "時 — vê a agenda do seu time e agenda reuniões direto do Google Chat.",
   "icons": {
     "16": "icons/icon.png",
@@ -10,7 +10,7 @@
     "128": "icons/icon.png"
   },
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1TSCtVSFdleKf1VHo32UpFs2b9QZqbqvdK33jAxRueSioF3fTMZSngcvJttkdmmOwi9cdvdZYr+Eu8TIhecQyTES/jR+a5lN4kRejxQlEUyBOFH3Ln72NCWgzaeGzWjIGZ0+1cXXLI9euSeb5oIFS0gZt5uib/aUejeSnhllKt/pPXauHmWgZbLbC2wJuCcKjep1G54E2Ijm2ZqrVBx6e7qMz8W3WOOxOCu5oq0lvdpQX90voyYtlQGup44VUXqt6pB76Zfbj8HgTxxaIw1X+TBSdoWTblTnyv0CkoHA4kU/SxdMhqVcOSMVqqravNIBv+m86LJUgUxndd636TZRMwIDAQAB",
-  "permissions": ["identity", "storage", "alarms", "downloads"],
+  "permissions": ["identity", "storage", "alarms"],
   "host_permissions": ["http://localhost:8787/*", "<all_urls>"],
   "background": {
     "service_worker": "background.js",
@@ -36,12 +36,6 @@
       "matches": ["https://chat.google.com/*"],
       "js": ["chat-google.js"],
       "run_at": "document_idle"
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["themes/*.css"],
-      "matches": ["https://chat.google.com/*"]
     }
   ]
 }

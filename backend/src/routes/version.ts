@@ -11,7 +11,7 @@ import { Router } from "express";
 //   3. rebuild extension + create zip
 //   4. scp the zip to services.kipflow.io:/home/ubuntu/busy-checker/public/
 //   5. deploy backend
-export const LATEST_VERSION = "0.3.3";
+export const LATEST_VERSION = "0.4.0";
 const PUBLIC_BASE =
   process.env.PUBLIC_BASE_URL ?? "https://services.kipflow.io/busy-checker";
 
@@ -23,9 +23,9 @@ router.get("/", (_req, res) => {
     downloadUrl: `${PUBLIC_BASE}/extension/toki-latest.zip`,
     // Optional: short PT-BR changelog the banner can show on hover.
     releaseNotes:
-      "v0.2.0: popup virou chat real com histórico, widget detecta o novo " +
-      "esquema de URL do Chat (/app/chat/), botões de minimizar e fechar, " +
-      "disambiguation de nomes ambíguos.",
+      "v0.4.0: Toki Design System integrado — 7 temas (default, terminal, " +
+      "doodle, washi, aqua, jornal, cyber) selecionáveis nas Configurações " +
+      "e aplicados ao vivo no popup + widget. CSS refatorado com tokens.",
   });
 });
 

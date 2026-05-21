@@ -4,35 +4,8 @@
     <meta charset="utf-8" />
     <title>Toki</title>
     <link rel="stylesheet" href="popup.css" />
-    <link id="theme-link" rel="stylesheet" href="themes/default.css" />
   </head>
   <body>
-    <!-- === Update banner (shown when backend reports a newer version) === -->
-    <div id="update-banner" class="update-banner" hidden>
-      <div class="update-banner-text">
-        <span class="update-banner-title">Atualização disponível</span>
-        <span class="update-banner-version" id="update-banner-version"></span>
-      </div>
-      <button id="update-now" type="button" class="update-banner-btn">
-        Atualizar
-      </button>
-    </div>
-
-    <!-- === Update instructions modal === -->
-    <div id="update-modal" class="update-modal" hidden>
-      <div class="update-modal-card">
-        <p class="update-modal-title">Quase lá</p>
-        <ol class="update-modal-steps">
-          <li>O zip foi baixado pra sua pasta de Downloads.</li>
-          <li>Extraia o arquivo.</li>
-          <li>Vá pra <code>chrome://extensions</code> (já abri pra você).</li>
-          <li>Remova o Toki antigo.</li>
-          <li>Clique em "Carregar sem compactação" e selecione a pasta extraída.</li>
-        </ol>
-        <button id="update-modal-close" type="button">Fechar</button>
-      </div>
-    </div>
-
     <!-- === HOME view === -->
     <section id="view-home" class="view">
       <header>
@@ -194,24 +167,6 @@
             <span class="setting-help">Usada no preview da agenda.</span>
           </div>
           <input id="event-color" type="color" />
-        </div>
-
-        <div class="setting-row">
-          <div class="setting-label">
-            <span class="setting-name">Tema</span>
-            <span class="setting-help">
-              Reskina popup + widget. Aplica ao vivo.
-            </span>
-          </div>
-          <div class="theme-grid" id="theme-grid">
-            <label><input type="radio" name="theme" value="default" /><span>default</span></label>
-            <label><input type="radio" name="theme" value="terminal" /><span>terminal</span></label>
-            <label><input type="radio" name="theme" value="doodle" /><span>doodle</span></label>
-            <label><input type="radio" name="theme" value="washi" /><span>washi</span></label>
-            <label><input type="radio" name="theme" value="aqua" /><span>aqua</span></label>
-            <label><input type="radio" name="theme" value="jornal" /><span>jornal</span></label>
-            <label><input type="radio" name="theme" value="cyber" /><span>cyber</span></label>
-          </div>
         </div>
 
         <div class="settings-footer">

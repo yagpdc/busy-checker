@@ -1,0 +1,92 @@
+/* Jornal theme — newspaper print. Old Standard TT + Playfair Display.
+   Hard 4px offset shadows, b&w only, sharp corners. */
+@import url("https://fonts.googleapis.com/css2?family=Old+Standard+TT:wght@400;700&family=Playfair+Display:wght@700;900&display=swap");
+
+:root, :host {
+  --ink:           #1a1614;
+  --ink-2:         #2e2722;
+  --ink-3:         #4a4239;
+
+  --gray-1:        #4a4239;
+  --gray-2:        #877c6c;
+  --gray-3:        #1a1614;
+  --gray-4:        #1a1614;
+  --gray-5:        #e0d6bd;
+  --gray-6:        #ece4cf;
+  --off-white:     #ece4cf;
+  --white:         #f7f1de;
+
+  --red:           #1a1614;
+  --red-2:         #1a1614;
+  --red-bg:        #ece4cf;
+  --orange:        #1a1614;
+  --green:         #1a1614;
+  --green-2:       #1a1614;
+  --green-bg:      #ece4cf;
+  --blue-event:    #1a1614;
+
+  --bg:            #f7f1de;
+  --bg-elev:       #f7f1de;
+  --bg-sunken:     #ece4cf;
+  --bg-chip:       #e0d6bd;
+  --bg-hover:      #e0d6bd;
+
+  --fg-1:          #1a1614;
+  --fg-2:          #4a4239;
+  --fg-3:          #877c6c;
+  --fg-on-ink:     #f7f1de;
+
+  --border:        #1a1614;
+  --divider:       #1a1614;
+  --border-strong: #1a1614;
+
+  --accent:        #1a1614;
+  --accent-fg:     #f7f1de;
+  --danger:        #1a1614;
+  --info:          #1a1614;
+  --now-line:      #1a1614;
+
+  --focus-ring:        0 0 0 3px rgba(26, 22, 20, 0.2);
+  --focus-ring-strong: 0 0 0 4px rgba(26, 22, 20, 0.2);
+
+  --font-ui:    "Old Standard TT", "Playfair Display", "Times New Roman", Georgia, serif;
+  --font-kanji: "Playfair Display", serif;
+  --font-mono:  "Old Standard TT", serif;
+
+  --radius-control: 0;
+  --radius-button:  0;
+  --radius-card:    0;
+  --radius-bubble:  0;
+  --radius-pill:    0;
+
+  --shadow-tiny:   none;
+  --shadow-card:   4px 4px 0 #1a1614;
+  --shadow-button: 3px 3px 0 #1a1614;
+  --shadow-switch: none;
+}
+
+/* Display headlines */
+.brand-name { font-family: "Playfair Display", serif; font-weight: 900; font-size: 18px; letter-spacing: -0.02em; }
+.greeting-title,
+#bc-name { font-family: "Playfair Display", serif; font-weight: 900; font-size: 22px; letter-spacing: -0.02em; }
+
+/* Hard 2px borders on header */
+header { border-bottom: 2px solid var(--accent); }
+
+/* Italic taglines */
+.greeting-sub,
+#user-email,
+#bc-email,
+.setting-help,
+.home-toggle-help { font-style: italic; }
+
+/* Inverted "newspaper" buttons */
+.prompt-send,
+#sign-in,
+.update-banner-btn,
+#save-settings {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  font-family: "Playfair Display", serif;
+}

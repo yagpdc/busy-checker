@@ -1,0 +1,564 @@
+/* ============================================================
+   Toki UI Kit — themeable popup + widget styles
+   Layout, sizing, and structure stay constant.
+   Theme files (themes/*.css) override the CSS vars on :root.
+   ============================================================ */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg-1);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================
+   POPUP (360 px) — toolbar popup
+   ============================================================ */
+.toki-popup {
+  width: 360px;
+  background: var(--bg);
+  color: var(--fg-1);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  position: relative;
+}
+
+.toki-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.toki-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.toki-brand-kanji {
+  font-family: var(--font-kanji);
+  font-size: 24px;
+  color: var(--fg-1);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.toki-brand-name {
+  font-size: 14px;
+  font-weight: var(--w-semibold);
+  letter-spacing: -0.015em;
+  color: var(--fg-1);
+}
+
+.toki-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--fg-2);
+}
+.toki-user-email {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toki-icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  color: var(--fg-2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--dur-hover), color var(--dur-hover);
+}
+.toki-icon-btn:hover { background: var(--bg-hover); color: var(--fg-1); }
+.toki-icon-btn svg { width: 16px; height: 16px; }
+
+.toki-pill {
+  font-size: 11px;
+  font-weight: var(--w-medium);
+  background: transparent;
+  color: var(--fg-2);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background var(--dur-hover), color var(--dur-hover), border-color var(--dur-hover);
+  white-space: nowrap;
+  font-family: inherit;
+}
+.toki-pill.toki-pill-primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+.toki-pill.toki-pill-primary:hover { background: var(--accent-hover, var(--ink-2)); border-color: var(--accent-hover, var(--ink-2)); }
+.toki-pill:not(.toki-pill-primary):hover { background: var(--bg-hover); color: var(--fg-1); border-color: var(--border-strong); }
+
+.toki-main { padding: 14px 16px 16px; }
+
+.toki-greeting {
+  margin-bottom: 12px;
+}
+.toki-greeting-title {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: var(--w-semibold);
+  letter-spacing: -0.02em;
+  color: var(--fg-1);
+}
+.toki-greeting-sub {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+  letter-spacing: -0.005em;
+}
+
+.toki-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.toki-msg {
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+.toki-msg.toki-msg-user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--accent-fg);
+  padding: 8px 12px;
+  border-radius: 14px 14px 4px 14px;
+  max-width: 84%;
+}
+.toki-msg.toki-msg-asst {
+  align-self: flex-start;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 92%;
+}
+.toki-msg-kanji {
+  font-family: var(--font-kanji);
+  font-size: 16px;
+  color: var(--fg-1);
+  font-weight: var(--w-medium);
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+  padding-top: 1px;
+}
+.toki-msg-bubble {
+  background: var(--bg-chip);
+  color: var(--fg-1);
+  padding: 8px 12px;
+  border-radius: 14px 14px 14px 4px;
+}
+
+.toki-composer {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-bubble);
+  padding: 10px 10px 10px 14px;
+  transition: border-color var(--dur-hover), background var(--dur-hover), box-shadow var(--dur-hover);
+}
+.toki-composer:focus-within {
+  border-color: var(--fg-1);
+  background: var(--bg);
+  box-shadow: var(--focus-ring-strong);
+}
+.toki-composer textarea {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--fg-1);
+  letter-spacing: -0.005em;
+  resize: none;
+  outline: none;
+  padding: 2px 0;
+  line-height: 1.4;
+  font-family: inherit;
+}
+.toki-composer textarea::placeholder { color: var(--fg-3); }
+.toki-send {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background var(--dur-hover), transform var(--dur-press);
+}
+.toki-send:hover { background: var(--accent-hover, var(--ink-2)); }
+.toki-send:active { transform: scale(0.94); }
+.toki-send svg { width: 15px; height: 15px; }
+
+.toki-footer {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--divider);
+}
+.toki-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.toki-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.toki-toggle-name {
+  font-size: 12.5px;
+  font-weight: var(--w-medium);
+  color: var(--fg-1);
+  letter-spacing: -0.01em;
+}
+.toki-toggle-help {
+  font-size: 11px;
+  color: var(--fg-2);
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+}
+
+/* Switch */
+.toki-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: inline-block;
+}
+.toki-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.toki-switch .slider {
+  position: absolute;
+  inset: 0;
+  background: var(--border-strong);
+  border-radius: var(--radius-pill);
+  transition: background 0.18s;
+}
+.toki-switch .slider::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  top: 2px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: var(--shadow-switch);
+  transition: transform 0.18s;
+}
+.toki-switch input:checked + .slider { background: var(--accent); }
+.toki-switch input:checked + .slider::before { transform: translateX(16px); }
+
+/* ============================================================
+   WIDGET (320 px) — Google Chat in-page widget
+   ============================================================ */
+.toki-widget {
+  width: 320px;
+  color: var(--fg-1);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+
+.toki-widget-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--divider);
+}
+.toki-widget-name {
+  font-size: 16px;
+  font-weight: var(--w-semibold);
+  letter-spacing: -0.015em;
+  color: var(--fg-1);
+}
+.toki-widget-email {
+  font-size: 12px;
+  color: var(--fg-2);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.toki-widget-text { flex: 1; min-width: 0; }
+.toki-widget-name-row { display: flex; align-items: center; gap: 6px; }
+
+.toki-busy-tag {
+  background: var(--danger);
+  color: #fff;
+  font-size: 9px;
+  font-weight: var(--w-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.toki-meet-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-chip);
+  border-radius: var(--radius-pill);
+  color: var(--fg-2);
+  font-size: 12px;
+  font-weight: var(--w-medium);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.toki-meet-badge svg { width: 13px; height: 13px; }
+
+.toki-widget-body { padding: 10px 12px 12px; }
+
+/* Day carousel */
+.toki-days {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.toki-day-side {
+  font: var(--w-medium) 12px var(--font-ui);
+  color: var(--fg-3);
+  background: none;
+  border: 0;
+  padding: 4px 6px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  min-width: 56px;
+  text-align: center;
+  font-family: inherit;
+}
+.toki-day-side:hover:not(:disabled) { color: var(--fg-2); }
+.toki-day-side:disabled { opacity: 0.25; cursor: not-allowed; }
+.toki-day-side.left { text-align: left; }
+.toki-day-side.right { text-align: right; }
+.toki-day-center {
+  font-size: 15px;
+  font-weight: var(--w-semibold);
+  color: var(--fg-1);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Clock row */
+.toki-clock-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 2px 0 8px;
+}
+.toki-cal-tile {
+  width: 56px;
+  height: 60px;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  flex-shrink: 0;
+  box-shadow: var(--shadow-tiny);
+  display: flex;
+  flex-direction: column;
+}
+.toki-cal-month {
+  background: var(--cal-month-bg, #18181b);
+  color: var(--cal-month-fg, #fafafa);
+  font-size: 9px;
+  font-weight: var(--w-bold);
+  letter-spacing: 0.10em;
+  text-align: center;
+  padding: 4px 0 3px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.toki-cal-day {
+  flex: 1;
+  font-size: 26px;
+  font-weight: var(--w-medium);
+  letter-spacing: -0.03em;
+  color: var(--fg-1);
+  text-align: center;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, var(--bg) 0%, var(--off-white) 100%);
+}
+
+.toki-clock-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.toki-flip {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.toki-flip-card {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  width: 52px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: var(--w-bold);
+  color: var(--fg-1);
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  box-shadow: var(--shadow-tiny);
+}
+
+.toki-slot-intra { display: flex; flex-direction: column; gap: 4px; }
+.toki-chev {
+  background: transparent;
+  border: 1px solid var(--border);
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--fg-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--dur-hover), color var(--dur-hover), border-color var(--dur-hover), transform var(--dur-press);
+  padding: 0;
+}
+.toki-chev svg { width: 12px; height: 12px; }
+.toki-chev:hover:not(:disabled) { background: var(--bg-hover); color: var(--fg-1); border-color: var(--border-strong); }
+.toki-chev:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Agenda */
+.toki-agenda {
+  position: relative;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  height: 170px;
+}
+.toki-tl-line {
+  position: absolute;
+  left: 30px;
+  right: 4px;
+  height: 1px;
+  background: rgba(0,0,0,0.05);
+}
+.toki-tl-hour {
+  position: absolute;
+  left: 4px;
+  width: 24px;
+  font-size: 9px;
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+  transform: translateY(-50%);
+  letter-spacing: -0.02em;
+}
+.toki-tl-now {
+  position: absolute;
+  left: 28px;
+  right: 4px;
+  height: 0;
+  border-top: 1.5px solid var(--now-line);
+  z-index: 3;
+}
+.toki-tl-now::before {
+  content: "";
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 6.5px;
+  height: 6.5px;
+  border-radius: 50%;
+  background: var(--now-line);
+}
+.toki-ev {
+  position: absolute;
+  border-radius: 4px;
+  padding: 3px 7px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  background: var(--info);
+  color: #fff;
+}
+.toki-ev-time { font-size: 10px; opacity: 0.85; line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.toki-ev-title { font-size: 11px; font-weight: var(--w-semibold); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; }
+.toki-ev.slot {
+  background: transparent !important;
+  color: var(--fg-1) !important;
+  border: 1.5px dashed var(--fg-1);
+  box-shadow: none;
+  z-index: 2;
+}
+.toki-ev.slot .toki-ev-time { opacity: 1; font-weight: var(--w-semibold); }
+
+.toki-schedule {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 12px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: 0;
+  border-radius: 8px;
+  font: var(--w-medium) 13px var(--font-ui);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--dur-hover);
+}
+.toki-schedule:hover { background: var(--accent-hover, var(--ink-2)); box-shadow: var(--shadow-button); }

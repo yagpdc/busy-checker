@@ -1,0 +1,6 @@
+/* Default theme — explicit no-op file. The tokens in _tokens.css already
+   define the default near-monochrome look; this file exists so the loader
+   can always `<link href="themes/<name>.css">` and find something. */
+:root, :host {
+  /* default values intentionally left as inherited from _tokens.css */
+}

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link rel="stylesheet" href="_card.css">
+<style>
+  .row-label {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    align-items: center;
+    gap: 16px;
+  }
+  .state {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-2);
+    letter-spacing: 0;
+    text-transform: none;
+    font-weight: 500;
+  }
+  .btn-primary {
+    background: var(--ink);
+    color: #fff;
+    border: 0;
+    padding: 9px 14px;
+    border-radius: 8px;
+    font: 500 13px var(--font-ui);
+    cursor: pointer;
+    letter-spacing: -0.005em;
+  }
+  .btn-primary.hover  { background: var(--ink-2); box-shadow: 0 4px 12px rgba(17,24,39,0.15); }
+  .btn-primary.active { background: var(--ink-2); transform: translateY(1px); }
+  .btn-primary.disabled { background: var(--gray-2); cursor: wait; }
+  .btn-primary.compact { padding: 7px 14px; font-size: 12px; }
+  .btn-secondary {
+    background: #fff;
+    color: var(--fg-2);
+    border: 1px solid var(--gray-3);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font: 13px var(--font-ui);
+    cursor: pointer;
+  }
+  .btn-secondary:hover { background: var(--gray-6); color: var(--ink-3); }
+  .btn-full {
+    width: 240px;
+    padding: 9px 12px;
+    background: var(--ink);
+    color: #fff;
+    border: 0;
+    border-radius: 8px;
+    font: 500 13px var(--font-ui);
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <div class="row-label">
+    <span class="state">resting</span>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="btn-primary">Agendar nesta janela</button>
+      <button class="btn-primary compact">Salvar</button>
+    </div>
+  </div>
+
+  <div class="row-label">
+    <span class="state">:hover</span>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="btn-primary hover">Agendar nesta janela</button>
+      <button class="btn-primary compact hover">Salvar</button>
+    </div>
+  </div>
+
+  <div class="row-label">
+    <span class="state">:active</span>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="btn-primary active">Agendar nesta janela</button>
+      <button class="btn-primary compact active">Salvar</button>
+    </div>
+  </div>
+
+  <div class="row-label">
+    <span class="state">loading</span>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="btn-primary disabled">agendando<span style="opacity:0.7;">…</span></button>
+      <button class="btn-secondary" disabled style="opacity:0.6;cursor:wait;">Cancelar</button>
+    </div>
+  </div>
+
+  <div class="row-label">
+    <span class="state">secondary</span>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="btn-secondary">Cancelar</button>
+      <span class="t-helper" style="margin-left:4px;">ghost · gray-3 border · gray-6 hover</span>
+    </div>
+  </div>
+
+  <div class="row-label" style="align-items:start;">
+    <span class="state">block</span>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      <button class="btn-full">Agendar nesta janela</button>
+      <span class="t-helper">100% width inside the widget body · used once per surface.</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

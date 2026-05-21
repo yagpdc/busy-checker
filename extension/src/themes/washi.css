@@ -1,0 +1,86 @@
+/* Washi theme — sumi-ink calligraphy on warm washi paper. Noto Serif JP
+   throughout. Subtle paper-grain background + hanko-stamp OCUPADO. */
+@import url("https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;500;600;700&display=swap");
+
+:root, :host {
+  --ink:           #1c1614;
+  --ink-2:         #34281f;
+  --ink-3:         #4a3a2d;
+
+  --gray-1:        #6e5c4c;
+  --gray-2:        #a7917a;
+  --gray-3:        #b8a684;
+  --gray-4:        #d4c5a4;
+  --gray-5:        #ece4cd;
+  --gray-6:        #f3ecd9;
+  --off-white:     #f3ecd9;
+  --white:         #faf5e8;
+
+  --red:           #b03030;
+  --red-2:         #831f1f;
+  --red-bg:        #f3e0e0;
+  --orange:        #c95e2a;
+  --green:         #4a6a3a;
+  --green-2:       #4a6a3a;
+  --green-bg:      #ecf0e1;
+  --blue-event:    #6e5c4c;
+
+  --bg:            #faf5e8;
+  --bg-elev:       #faf5e8;
+  --bg-sunken:     #f3ecd9;
+  --bg-chip:       #ece4cd;
+  --bg-hover:      #ece4cd;
+
+  --fg-1:          #1c1614;
+  --fg-2:          #6e5c4c;
+  --fg-3:          #a7917a;
+  --fg-on-ink:     #faf5e8;
+
+  --border:        #d4c5a4;
+  --divider:       #ece4cd;
+  --border-strong: #b8a684;
+
+  --accent:        #1c1614;
+  --accent-fg:     #faf5e8;
+  --danger:        #b03030;
+  --info:          #6e5c4c;
+  --now-line:      #c95e2a;
+
+  --focus-ring:        0 0 0 3px rgba(28, 22, 20, 0.08);
+  --focus-ring-strong: 0 0 0 4px rgba(28, 22, 20, 0.08);
+
+  --font-ui:    "Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif;
+  --font-kanji: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif;
+  --font-mono:  "Noto Serif JP", serif;
+
+  --radius-control: 0;
+  --radius-button:  0;
+  --radius-card:    4px;
+  --radius-bubble:  2px;
+  --radius-pill:    0;
+
+  --shadow-tiny:   0 1px 1px rgba(60, 40, 20, 0.08);
+  --shadow-card:   0 1px 2px rgba(60, 40, 20, 0.06), 0 14px 40px rgba(60, 40, 20, 0.12);
+  --shadow-button: 0 4px 14px rgba(60, 40, 20, 0.2);
+  --shadow-switch: 0 1px 2px rgba(60, 40, 20, 0.15);
+}
+
+/* Paper grain overlay on body and widget root */
+body,
+#bc-root {
+  background-image:
+    radial-gradient(circle at 18% 22%, rgba(180, 150, 100, 0.05) 0px, transparent 60px),
+    radial-gradient(circle at 78% 75%, rgba(160, 130, 80, 0.06) 0px, transparent 80px);
+}
+
+.brand-kanji { font-size: 28px; font-weight: 700; }
+.brand-name,
+.greeting-title,
+#bc-name { font-weight: 500; letter-spacing: 0; }
+
+/* Hanko-stamp OCUPADO */
+#bc-busy-tag {
+  letter-spacing: 0.10em;
+  transform: rotate(-2deg);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), 0 1px 0 rgba(0, 0, 0, 0.15);
+}

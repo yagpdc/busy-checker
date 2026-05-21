@@ -9,30 +9,17 @@
 
 const WIDGET_ID = "busy-checker-widget";
 
-const THEME_NAMES = [
-  "default",
-  "terminal",
-  "doodle",
-  "washi",
-  "aqua",
-  "jornal",
-  "cyber",
-] as const;
-type ThemeName = (typeof THEME_NAMES)[number];
-
 type Settings = {
   workStartHour: number;
   workEndHour: number;
   eventColor: string;
   widgetEnabled: boolean;
-  theme: ThemeName;
 };
 const DEFAULT_SETTINGS: Settings = {
   workStartHour: 9,
   workEndHour: 18,
   eventColor: "#3b82f6",
   widgetEnabled: true,
-  theme: "default",
 };
 async function getSettings(): Promise<Settings> {
   const { settings } = await chrome.storage.local.get("settings");
@@ -55,11 +42,6 @@ async function getSettings(): Promise<Settings> {
       typeof s.widgetEnabled === "boolean"
         ? s.widgetEnabled
         : DEFAULT_SETTINGS.widgetEnabled,
-    theme:
-      typeof s.theme === "string" &&
-      (THEME_NAMES as readonly string[]).includes(s.theme)
-        ? (s.theme as ThemeName)
-        : DEFAULT_SETTINGS.theme,
   };
 }
 
@@ -74,11 +56,6 @@ async function getSettings(): Promise<Settings> {
 //   true on a fresh browser session.
 let widgetEnabled = DEFAULT_SETTINGS.widgetEnabled;
 let widgetOpen = true;
-
-// Currently-active theme name. Mirrors settings.theme; defaults to
-// "default" until the storage read completes. The widget's <link>
-// for themes/<name>.css gets swapped when this changes.
-let currentTheme: string = DEFAULT_SETTINGS.theme;
 
 // Google Chat enforces Trusted Types: setting .innerHTML with a raw string
 // throws. Register an extension policy that returns the string verbatim, or
@@ -314,27 +291,7 @@ function openWidget(name: string): void {
   host.style.cssText =
     "all:initial;position:fixed!important;bottom:24px!important;right:24px!important;z-index:2147483647!important;";
   const shadow = host.attachShadow({ mode: "open" });
-
-  // Inject theme tokens FIRST so the WIDGET_HTML inline <style> (which
-  // references var(--*)) resolves against the right values. The token
-  // file holds the default palette; the theme file overrides at :root
-  // for non-default themes. Both files are exposed via
-  // web_accessible_resources so chrome.runtime.getURL can resolve them.
-  const tokensLink = document.createElement("link");
-  tokensLink.rel = "stylesheet";
-  tokensLink.href = chrome.runtime.getURL("themes/_tokens.css");
-  shadow.appendChild(tokensLink);
-
-  const themeLink = document.createElement("link");
-  themeLink.rel = "stylesheet";
-  themeLink.id = "bc-theme-link";
-  themeLink.href = chrome.runtime.getURL(`themes/${currentTheme}.css`);
-  shadow.appendChild(themeLink);
-
-  // Now mount the structural HTML+CSS (uses vars defined above).
-  const widgetWrap = document.createElement("div");
-  setInnerHTML(widgetWrap, WIDGET_HTML);
-  while (widgetWrap.firstChild) shadow.appendChild(widgetWrap.firstChild);
+  setInnerHTML(shadow, WIDGET_HTML);
   (document.documentElement || document.body).appendChild(host);
 
   const $ = <T extends Element = HTMLElement>(sel: string) =>
@@ -467,24 +424,10 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
   const success = $("#bc-success") as HTMLElement;
 
   try {
-    // Hard timeout so the widget can't sit on the loading state forever.
-    // The common cause: the user reloaded/updated the extension while
-    // this tab was open, so the content script is now orphaned —
-    // chrome.runtime.sendMessage neither resolves nor rejects.
-    const sendPromise = chrome.runtime.sendMessage({
+    const res = await chrome.runtime.sendMessage({
       type: "query",
       targetName: name,
     });
-    const timeoutPromise = new Promise<never>((_, rej) =>
-      setTimeout(
-        () => rej(new Error("widget_query_timeout_20s")),
-        20_000,
-      ),
-    );
-    const res = (await Promise.race([sendPromise, timeoutPromise])) as
-      | { ok: true; data: unknown }
-      | { ok: false; error: string }
-      | undefined;
     if (!res?.ok) throw new Error(res?.error ?? "unknown_error");
 
     const { facts } = res.data as {
@@ -1139,7 +1082,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         confirmBtn.textContent = "Confirmar";
         success.hidden = false;
         success.style.cssText =
-          "background:var(--red-bg)!important;color:var(--red-2)!important;";
+          "background:#fef2f2!important;color:#991b1b!important;";
         const hint = /insufficient_scope|Insufficient Permission|403/i.test(msg)
           ? " Saia e entre de novo na extensão pra reautorizar."
           : "";
@@ -1149,19 +1092,9 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     });
   } catch (err) {
     const msg = (err as Error).message;
+    if (msg.includes("Extension context invalidated")) return;
     root.dataset.state = "error";
-    // Context invalidated = the user just updated/reloaded the extension
-    // and this content script is orphaned. The user needs to F5 the tab
-    // for a fresh script to mount. Same useful message for the timeout
-    // case since the visible symptom is identical (stuck loading).
-    if (
-      msg.includes("Extension context invalidated") ||
-      msg.includes("widget_query_timeout")
-    ) {
-      emailEl.textContent = "Recarregue a aba (F5) para atualizar.";
-    } else {
-      emailEl.textContent = msg;
-    }
+    emailEl.textContent = msg;
   }
 }
 
@@ -1175,9 +1108,9 @@ const WIDGET_HTML = `
       "SF Pro Text", "Segoe UI Variable", "Segoe UI", Inter, system-ui,
       sans-serif;
     width: 320px;
-    color: var(--fg-1);
-    background: var(--bg-elev);
-    border: 1px solid var(--border);
+    color: #111827;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
     border-radius: 12px;
     box-shadow:
       0 1px 2px rgba(0,0,0,0.04),
@@ -1196,7 +1129,7 @@ const WIDGET_HTML = `
     align-items: center;
     gap: 10px;
     padding: 14px 14px 12px;
-    border-bottom: 1px solid var(--bg-chip);
+    border-bottom: 1px solid #f3f4f6;
   }
   #bc-header-text { flex: 1; min-width: 0; }
   #bc-name-row {
@@ -1209,15 +1142,15 @@ const WIDGET_HTML = `
     font-size: 16px;
     font-weight: 600;
     letter-spacing: -0.015em;
-    color: var(--fg-1);
+    color: #111827;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
   }
   #bc-busy-tag {
-    background: var(--danger);
-    color: var(--bg-elev);
+    background: #dc2626;
+    color: #ffffff;
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.06em;
@@ -1232,9 +1165,9 @@ const WIDGET_HTML = `
     align-items: center;
     gap: 4px;
     padding: 4px 8px;
-    background: var(--bg-chip);
+    background: #f3f4f6;
     border-radius: 999px;
-    color: var(--fg-2);
+    color: #6b7280;
     font-size: 12px;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
@@ -1248,7 +1181,7 @@ const WIDGET_HTML = `
   #bc-min {
     background: none;
     border: 0;
-    color: var(--fg-3);
+    color: #9ca3af;
     cursor: pointer;
     line-height: 1;
     padding: 4px 6px;
@@ -1260,7 +1193,7 @@ const WIDGET_HTML = `
   }
   #bc-close { font-size: 18px; padding: 2px 6px; }
   #bc-close:hover,
-  #bc-min:hover { background: var(--bg-chip); color: var(--ink-3); }
+  #bc-min:hover { background: #f3f4f6; color: #374151; }
   #bc-min svg { width: 12px; height: 12px; transition: transform 0.2s ease; }
   #bc-root[data-minimized="true"] #bc-min svg { transform: rotate(180deg); }
 
@@ -1269,7 +1202,7 @@ const WIDGET_HTML = `
     font-family: "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP",
       "Noto Serif CJK JP", "MS Mincho", "Songti SC", serif;
     font-size: 18px;
-    color: var(--fg-1);
+    color: #111827;
     font-weight: 500;
     line-height: 1;
     letter-spacing: -0.02em;
@@ -1331,7 +1264,7 @@ const WIDGET_HTML = `
     font-family: "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP",
       "Noto Serif CJK JP", "MS Mincho", "Songti SC", serif;
     font-size: 20px;
-    color: var(--fg-1);
+    color: #111827;
     font-weight: 500;
     line-height: 1;
     flex-shrink: 0;
@@ -1340,7 +1273,7 @@ const WIDGET_HTML = `
   .bc-loading-text {
     flex: 1;
     font-size: 11.5px;
-    color: var(--fg-2);
+    color: #6b7280;
     font-style: italic;
     letter-spacing: -0.01em;
     line-height: 1.3;
@@ -1352,7 +1285,7 @@ const WIDGET_HTML = `
   .bc-loading-spinner {
     width: 12px;
     height: 12px;
-    color: var(--fg-3);
+    color: #9ca3af;
     flex-shrink: 0;
     animation: bc-spin 2.5s linear infinite;
     transform-origin: center;
@@ -1366,7 +1299,7 @@ const WIDGET_HTML = `
 
   #bc-email {
     font-size: 12px;
-    color: var(--fg-2);
+    color: #6b7280;
     margin-top: 2px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1396,7 +1329,7 @@ const WIDGET_HTML = `
     font: inherit;
     font-size: 12px;
     font-weight: 500;
-    color: var(--gray-2);
+    color: #d4d4d8;
     background: none;
     border: 0;
     padding: 4px 6px;
@@ -1408,7 +1341,7 @@ const WIDGET_HTML = `
     min-width: 56px;
     text-align: center;
   }
-  .bc-day-side:hover:not(:disabled) { color: var(--fg-2); }
+  .bc-day-side:hover:not(:disabled) { color: #6b7280; }
   .bc-day-side:disabled {
     opacity: 0.25;
     cursor: not-allowed;
@@ -1418,7 +1351,7 @@ const WIDGET_HTML = `
   .bc-day-c {
     font-size: 15px;
     font-weight: 600;
-    color: var(--fg-1);
+    color: #111827;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     transition: opacity 0.2s ease;
@@ -1455,16 +1388,16 @@ const WIDGET_HTML = `
     height: 60px;
     border-radius: 9px;
     overflow: hidden;
-    border: 1px solid var(--gray-2);
-    background: var(--bg-elev);
+    border: 1px solid #d4d4d8;
+    background: #ffffff;
     flex-shrink: 0;
     box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     display: flex;
     flex-direction: column;
   }
   #bc-cal-month {
-    background: var(--ink);
-    color: var(--bg-sunken);
+    background: #18181b;
+    color: #fafafa;
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.10em;
@@ -1478,7 +1411,7 @@ const WIDGET_HTML = `
     font-size: 26px;
     font-weight: 500;
     letter-spacing: -0.03em;
-    color: var(--ink);
+    color: #18181b;
     text-align: center;
     line-height: 1;
     display: flex;
@@ -1486,7 +1419,7 @@ const WIDGET_HTML = `
     justify-content: center;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" on, "lnum" on;
-    background: linear-gradient(180deg, var(--bg-elev) 0%, var(--bg-sunken) 100%);
+    background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
   }
 
   /* Flip-clock cards (HH MM) + intra-day chevron navigation */
@@ -1507,12 +1440,12 @@ const WIDGET_HTML = `
   }
   .bc-chev {
     background: transparent;
-    border: 1px solid var(--border);
+    border: 1px solid #e5e7eb;
     width: 24px;
     height: 24px;
     border-radius: 6px;
     padding: 0;
-    color: var(--fg-2);
+    color: #6b7280;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -1521,15 +1454,15 @@ const WIDGET_HTML = `
   }
   .bc-chev svg { width: 12px; height: 12px; display: block; }
   .bc-chev:hover:not(:disabled) {
-    background: var(--bg-chip);
-    color: var(--fg-1);
-    border-color: var(--gray-3);
+    background: #f3f4f6;
+    color: #111827;
+    border-color: #d1d5db;
   }
   .bc-chev:active:not(:disabled) { transform: scale(0.92); }
   .bc-chev:disabled { opacity: 0.3; cursor: not-allowed; }
   .bc-flip-card {
-    background: var(--bg-elev);
-    border: 1px solid var(--gray-2);
+    background: #ffffff;
+    border: 1px solid #d4d4d8;
     border-radius: 7px;
     width: 52px;
     height: 60px;
@@ -1538,7 +1471,7 @@ const WIDGET_HTML = `
     justify-content: center;
     font-size: 32px;
     font-weight: 700;
-    color: var(--fg-1);
+    color: #111827;
     letter-spacing: -0.04em;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" on, "lnum" on;
@@ -1553,8 +1486,8 @@ const WIDGET_HTML = `
      proportional to duration. */
   #bc-agenda {
     position: relative;
-    background: var(--bg-sunken);
-    border: 1px solid var(--border);
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
     border-radius: 8px;
     overflow: hidden;
     transition: opacity 0.18s ease;
@@ -1583,7 +1516,7 @@ const WIDGET_HTML = `
     left: 4px;
     width: 24px;
     font-size: 9px;
-    color: var(--fg-3);
+    color: #9ca3af;
     font-variant-numeric: tabular-nums;
     transform: translateY(-50%);
     letter-spacing: -0.02em;
@@ -1593,7 +1526,7 @@ const WIDGET_HTML = `
     left: 28px;
     right: 4px;
     height: 0;
-    border-top: 1.5px solid var(--now-line);
+    border-top: 1.5px solid #f97316;
     z-index: 3;
     pointer-events: none;
   }
@@ -1605,7 +1538,7 @@ const WIDGET_HTML = `
     width: 6.5px;
     height: 6.5px;
     border-radius: 50%;
-    background: var(--now-line);
+    background: #f97316;
   }
 
   .bc-ev {
@@ -1668,8 +1601,8 @@ const WIDGET_HTML = `
   /* Slot: transparent + dashed border, dark text */
   .bc-ev.bc-ev-slot {
     background: transparent !important;
-    color: var(--fg-1) !important;
-    border: 1.5px dashed var(--fg-1);
+    color: #111827 !important;
+    border: 1.5px dashed #111827;
     box-shadow: none;
     z-index: 2;
   }
@@ -1679,8 +1612,8 @@ const WIDGET_HTML = `
     width: 100%;
     margin-top: 10px;
     padding: 9px 12px;
-    background: var(--fg-1);
-    color: var(--bg-elev);
+    background: #111827;
+    color: #ffffff;
     border: 0;
     border-radius: 8px;
     font: inherit;
@@ -1690,7 +1623,7 @@ const WIDGET_HTML = `
     transition: background 0.15s, transform 0.08s, box-shadow 0.15s;
   }
   #bc-schedule:hover  {
-    background: var(--ink-2);
+    background: #1f2937;
     box-shadow: 0 4px 12px rgba(17, 24, 39, 0.15);
   }
   #bc-schedule:active { transform: translateY(1px); }
@@ -1701,8 +1634,8 @@ const WIDGET_HTML = `
   #bc-form {
     margin-top: 12px;
     padding: 12px;
-    background: var(--bg-sunken);
-    border: 1px solid var(--border);
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
     border-radius: 8px;
   }
   #bc-form:not([hidden]) {
@@ -1716,7 +1649,7 @@ const WIDGET_HTML = `
   #bc-form label {
     display: block;
     font-size: 11px;
-    color: var(--fg-2);
+    color: #6b7280;
     font-weight: 500;
     letter-spacing: -0.01em;
     margin-bottom: 6px;
@@ -1724,16 +1657,16 @@ const WIDGET_HTML = `
   #bc-title {
     width: 100%;
     padding: 7px 10px;
-    border: 1px solid var(--gray-3);
+    border: 1px solid #d1d5db;
     border-radius: 6px;
     font: inherit;
     font-size: 13px;
-    background: var(--bg-elev);
-    color: var(--fg-1);
+    background: #ffffff;
+    color: #111827;
   }
   #bc-title:focus {
     outline: 0;
-    border-color: var(--fg-1);
+    border-color: #111827;
     box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.08);
   }
   #bc-dur-label { margin-top: 10px; }
@@ -1744,23 +1677,23 @@ const WIDGET_HTML = `
   }
   .bc-dur {
     padding: 5px 10px;
-    border: 1px solid var(--gray-3);
+    border: 1px solid #d1d5db;
     border-radius: 6px;
-    background: var(--bg-elev);
+    background: #ffffff;
     font: inherit;
     font-size: 12px;
     font-weight: 500;
-    color: var(--ink-3);
+    color: #374151;
     cursor: pointer;
     transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.08s;
     font-variant-numeric: tabular-nums;
   }
-  .bc-dur:hover { background: var(--bg-chip); }
+  .bc-dur:hover { background: #f3f4f6; }
   .bc-dur:active { transform: scale(0.95); }
   .bc-dur[data-selected="true"] {
-    background: var(--fg-1);
-    color: var(--bg-elev);
-    border-color: var(--fg-1);
+    background: #111827;
+    color: #ffffff;
+    border-color: #111827;
   }
 
   #bc-actions {
@@ -1771,8 +1704,8 @@ const WIDGET_HTML = `
   #bc-confirm {
     flex: 1;
     padding: 8px 12px;
-    background: var(--fg-1);
-    color: var(--bg-elev);
+    background: #111827;
+    color: #ffffff;
     border: 0;
     border-radius: 6px;
     font: inherit;
@@ -1781,33 +1714,33 @@ const WIDGET_HTML = `
     cursor: pointer;
     transition: background 0.15s, transform 0.08s;
   }
-  #bc-confirm:hover { background: var(--ink-2); }
+  #bc-confirm:hover { background: #1f2937; }
   #bc-confirm:active:not(:disabled) { transform: translateY(1px); }
   #bc-confirm:disabled {
-    background: var(--fg-3);
+    background: #9ca3af;
     cursor: wait;
   }
   #bc-cancel {
     padding: 8px 12px;
-    background: var(--bg-elev);
-    color: var(--fg-2);
-    border: 1px solid var(--gray-3);
+    background: #ffffff;
+    color: #6b7280;
+    border: 1px solid #d1d5db;
     border-radius: 6px;
     font: inherit;
     font-size: 13px;
     cursor: pointer;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
   }
-  #bc-cancel:hover { background: var(--gray-6); color: var(--ink-3); }
+  #bc-cancel:hover { background: #f9fafb; color: #374151; }
   #bc-cancel:disabled { cursor: wait; opacity: 0.6; }
 
   #bc-success {
     margin-top: 12px;
     padding: 10px 12px;
-    background: var(--green-bg);
-    border: 1px solid var(--green-border);
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
     border-radius: 8px;
-    color: var(--green);
+    color: #166534;
     font-size: 12px;
     line-height: 1.55;
   }
@@ -1818,12 +1751,12 @@ const WIDGET_HTML = `
     0%   { opacity: 0; transform: scale(0.94) translateY(-4px); }
     100% { opacity: 1; transform: scale(1)    translateY(0); }
   }
-  #bc-success a { color: var(--green); font-weight: 600; text-decoration: underline; }
-  #bc-success a:hover { color: var(--green); }
+  #bc-success a { color: #166534; font-weight: 600; text-decoration: underline; }
+  #bc-success a:hover { color: #14532d; }
 
   #bc-close { transition: background 0.15s, color 0.15s; }
 
-  #bc-root[data-state="error"] #bc-body { background: var(--red-bg); }
+  #bc-root[data-state="error"] #bc-body { background: #fef2f2; }
 </style>
 <div id="bc-root" data-state="thinking" data-status="unknown">
   <div id="bc-header">
@@ -1937,7 +1870,6 @@ Promise.all([
 ])
   .then(([s, sess]) => {
     widgetEnabled = s.widgetEnabled;
-    currentTheme = s.theme;
     widgetOpen =
       typeof (sess as { widgetOpen?: unknown }).widgetOpen === "boolean"
         ? ((sess as { widgetOpen: boolean }).widgetOpen)
@@ -1957,21 +1889,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (enabled !== widgetEnabled) {
       widgetEnabled = enabled;
       reactToState();
-    }
-    const nextTheme =
-      typeof next.theme === "string" &&
-      (THEME_NAMES as readonly string[]).includes(next.theme)
-        ? (next.theme as ThemeName)
-        : DEFAULT_SETTINGS.theme;
-    if (nextTheme !== currentTheme) {
-      currentTheme = nextTheme;
-      // Hot-swap the theme link inside the mounted widget's shadow root,
-      // no remount needed.
-      const host = document.getElementById(WIDGET_ID);
-      const link = host?.shadowRoot?.getElementById(
-        "bc-theme-link",
-      ) as HTMLLinkElement | null;
-      if (link) link.href = chrome.runtime.getURL(`themes/${currentTheme}.css`);
     }
     return;
   }

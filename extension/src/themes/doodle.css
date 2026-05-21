@@ -1,0 +1,99 @@
+/* Doodle theme — pastel pink, handwritten fonts, chunky borders + offset
+   shadows. Caveat for display + Patrick Hand for body. */
+@import url("https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Patrick+Hand&display=swap");
+
+:root, :host {
+  --ink:           #5b3a4f;
+  --ink-2:         #4a2e40;
+  --ink-3:         #6b4357;
+
+  --gray-1:        #a87690;
+  --gray-2:        #d8a8be;
+  --gray-3:        #ffa6c4;
+  --gray-4:        #ffc1d6;
+  --gray-5:        #ffe0eb;
+  --gray-6:        #ffeef3;
+  --off-white:     #ffeef3;
+  --white:         #fff7f9;
+
+  --red:           #ff4f6b;
+  --red-bg:        #ffe4e9;
+  --orange:        #ffa64d;
+  --green:         #7aa86e;
+  --green-2:       #7aa86e;
+  --green-bg:      #eef9ea;
+  --blue-event:    #c084fc;
+
+  --bg:            #fff7f9;
+  --bg-elev:       #fff7f9;
+  --bg-sunken:     #ffeef3;
+  --bg-chip:       #ffe0eb;
+  --bg-hover:      #ffe0eb;
+
+  --fg-1:          #5b3a4f;
+  --fg-2:          #a87690;
+  --fg-3:          #d8a8be;
+  --fg-on-ink:     #ffffff;
+
+  --border:        #ffc1d6;
+  --divider:       #ffd6e2;
+  --border-strong: #ffa6c4;
+
+  --accent:        #ff6fa3;
+  --accent-fg:     #ffffff;
+  --danger:        #ff4f6b;
+  --info:          #c084fc;
+  --now-line:      #ffa64d;
+
+  --focus-ring:        0 0 0 3px rgba(255, 111, 163, 0.25);
+  --focus-ring-strong: 0 0 0 4px rgba(255, 111, 163, 0.25);
+
+  --font-ui:    "Patrick Hand", "Caveat", "Comic Sans MS", system-ui, sans-serif;
+  --font-mono:  "Patrick Hand", system-ui, sans-serif;
+
+  --radius-control: 14px;
+  --radius-button:  16px;
+  --radius-card:    22px;
+  --radius-bubble:  18px;
+  --radius-pill:    999px;
+
+  --shadow-tiny:   0 1px 0 #ffd6e2;
+  --shadow-card:   0 2px 0 #ffc1d6, 0 8px 24px rgba(255, 111, 163, 0.15);
+  --shadow-button: 0 3px 0 #d94e84, 0 8px 20px rgba(255, 111, 163, 0.35);
+  --shadow-switch: 0 1px 2px rgba(255, 111, 163, 0.3);
+}
+
+/* Cursive headings */
+.greeting-title,
+.brand-name,
+#bc-name,
+.settings-title,
+#bc-day-center {
+  font-family: "Caveat", cursive;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--accent);
+}
+.greeting-title { font-size: 26px; }
+.brand-name { font-size: 22px; }
+#bc-name { font-size: 20px; }
+
+/* Chunky borders + offset shadow on the prompt-send + sign-in */
+.prompt-send,
+#sign-in,
+.update-banner-btn,
+#save-settings {
+  box-shadow: 0 3px 0 #d94e84;
+}
+.prompt-send:active,
+#sign-in:active,
+.update-banner-btn:active,
+#save-settings:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #d94e84;
+}
+
+.msg-user { box-shadow: 0 2px 0 #d94e84; }
+
+/* Italic placeholder */
+#question::placeholder { font-style: italic; }
