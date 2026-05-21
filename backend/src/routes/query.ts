@@ -75,7 +75,20 @@ router.post("/", requireSession, async (req, res) => {
   );
 
   const asker = await clientForUser(req.session!.userId);
+  console.log("[query] clientForUser ok", Date.now() - t0, "ms");
   const history: ChatMessage[] = parse.data.messages ?? [];
+
+  // Defensive timeout wrapper for resolution paths — Google People API
+  // calls hung indefinitely a few times in production. 10s is generous
+  // enough that a slow-but-working response still completes.
+  function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+    return Promise.race([
+      p,
+      new Promise<T>((_, rej) =>
+        setTimeout(() => rej(new Error(`${label}_timeout_${ms}ms`)), ms),
+      ),
+    ]);
+  }
 
   // Resolution priority for the current turn:
   //   1. explicit targetEmail
@@ -91,16 +104,40 @@ router.post("/", requireSession, async (req, res) => {
   let candidates: DirectoryCandidate[] = [];
 
   async function resolveByHint(hint: string): Promise<string | null> {
-    const local = await emailForNameHint(hint);
+    const local = await withTimeout(
+      emailForNameHint(hint),
+      3000,
+      "emailForNameHint",
+    ).catch((err) => {
+      console.error("[query] emailForNameHint error", err);
+      return null;
+    });
+    console.log("[query] emailForNameHint", hint, "→", local);
     if (local) return local;
-    return await findEmailInDirectory(asker, hint);
+    const dir = await withTimeout(
+      findEmailInDirectory(asker, hint),
+      8000,
+      "findEmailInDirectory",
+    ).catch((err) => {
+      console.error("[query] findEmailInDirectory error", err);
+      return null;
+    });
+    console.log("[query] findEmailInDirectory", hint, "→", dir);
+    return dir;
   }
 
   if (!targetEmail && parse.data.targetName) {
     targetEmail = await resolveByHint(parse.data.targetName);
     if (!targetEmail) {
       // Surface candidates so the model can disambiguate.
-      candidates = await searchDirectory(asker, parse.data.targetName);
+      candidates = await withTimeout(
+        searchDirectory(asker, parse.data.targetName),
+        8000,
+        "searchDirectory",
+      ).catch((err) => {
+        console.error("[query] searchDirectory error", err);
+        return [];
+      });
     }
   }
 
