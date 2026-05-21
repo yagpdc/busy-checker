@@ -87,6 +87,7 @@ type Facts = {
   outsideWorkingHours: boolean;
   workingHours: { start: number; end: number };
   busyAround: BusyInterval[];
+  meetingsToday: number | null;
 };
 
 function formatTime(d: Date): string {
@@ -120,7 +121,8 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
   const $ = <T extends Element = HTMLElement>(sel: string) =>
     shadow.querySelector(sel) as T;
   const root = $("#bc-root") as HTMLElement;
-  const reply = $("#bc-reply") as HTMLElement;
+  const emailEl = $("#bc-email") as HTMLElement;
+  const meetingsInfo = $("#bc-meetings-info") as HTMLElement;
   const statusText = $("#bc-status-text") as HTMLElement;
   const slotEl = $("#bc-slot") as HTMLElement;
   const slotTime = $("#bc-slot-time") as HTMLElement;
@@ -139,18 +141,29 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     });
     if (!res?.ok) throw new Error(res?.error ?? "unknown_error");
 
-    const { reply: replyText, facts } = res.data as {
+    const { facts } = res.data as {
       reply: string;
       facts: Facts | null;
     };
 
     root.dataset.state = "ok";
-    reply.textContent = replyText;
 
     if (!facts) {
       root.dataset.status = "unknown";
       statusText.textContent = "não identificado";
       return;
+    }
+
+    emailEl.textContent = facts.targetEmail;
+    const n = facts.meetingsToday;
+    if (n === null) {
+      meetingsInfo.textContent = "";
+    } else if (n === 0) {
+      meetingsInfo.textContent = "· agenda livre hoje";
+    } else if (n === 1) {
+      meetingsInfo.textContent = "· 1 reunião hoje";
+    } else {
+      meetingsInfo.textContent = `· ${n} reuniões hoje`;
     }
 
     if (facts.meeting.busy) {
@@ -501,7 +514,7 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     if (msg.includes("Extension context invalidated")) return;
     root.dataset.state = "error";
     statusText.textContent = "erro";
-    reply.textContent = msg;
+    meetingsInfo.textContent = msg;
   }
 }
 
@@ -609,34 +622,19 @@ const WIDGET_HTML = `
     transition: color 0.2s ease;
   }
 
-  #bc-reply {
-    font-size: 13px;
-    line-height: 1.55;
-    color: #374151;
-    margin: 0;
-    transition: opacity 0.2s ease, color 0.2s ease;
-  }
-  #bc-root[data-state="thinking"] #bc-reply { color: #9ca3af; }
-  #bc-root[data-state="ok"] #bc-reply {
-    animation: bc-reply-in 0.3s ease-out;
-  }
-  @keyframes bc-reply-in {
-    from { opacity: 0; transform: translateY(2px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  #bc-root[data-state="thinking"] #bc-reply::after {
-    content: "…";
-    display: inline-block;
-    animation: bc-dots 1.2s steps(4, end) infinite;
-    width: 1.2em;
+  #bc-email {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 2px;
     overflow: hidden;
-    vertical-align: bottom;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  @keyframes bc-dots {
-    0%   { content: ""; }
-    25%  { content: "."; }
-    50%  { content: ".."; }
-    75%  { content: "..."; }
+  #bc-meetings-info {
+    font-size: 11px;
+    color: #9ca3af;
+    margin-left: 4px;
+    font-variant-numeric: tabular-nums;
   }
 
   #bc-slot {
@@ -942,8 +940,9 @@ const WIDGET_HTML = `
 <div id="bc-root" data-state="thinking" data-status="unknown">
   <div id="bc-header">
     <div id="bc-header-text">
-      <div id="bc-label">Busy Checker</div>
+      <div id="bc-label">busy checker</div>
       <div id="bc-name"></div>
+      <div id="bc-email"></div>
     </div>
     <button id="bc-close" aria-label="fechar">×</button>
   </div>
@@ -951,8 +950,8 @@ const WIDGET_HTML = `
     <div id="bc-status-row">
       <span id="bc-status-dot"></span>
       <span id="bc-status-text">verificando</span>
+      <span id="bc-meetings-info"></span>
     </div>
-    <p id="bc-reply">consultando agenda</p>
     <div id="bc-slot" hidden>
       <div id="bc-days">
         <button id="bc-day-prev" class="bc-day-side" type="button" disabled></button>

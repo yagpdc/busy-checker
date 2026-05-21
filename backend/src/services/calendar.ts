@@ -266,6 +266,60 @@ export async function busyIntervalsAround(
 }
 
 /**
+ * Counts the target's blocking meetings today (SP day bounds). Returns
+ * null when calendar isn't readable. Excludes all-day events (typically
+ * OOO/holidays — not meetings).
+ */
+export async function meetingsTodayCount(
+  asker: OAuth2Client,
+  targetEmail: string,
+  now: Date = new Date(),
+  tzOffsetHours = -3,
+): Promise<number | null> {
+  const sp = new Date(now.getTime() + tzOffsetHours * 60 * 60 * 1000);
+  const dayStartMs = Date.UTC(
+    sp.getUTCFullYear(),
+    sp.getUTCMonth(),
+    sp.getUTCDate(),
+    -tzOffsetHours,
+    0,
+    0,
+  );
+  const dayEndMs = dayStartMs + 24 * 60 * 60 * 1000;
+
+  const calendar = google.calendar({ version: "v3", auth: asker });
+  try {
+    const { data } = await calendar.events.list({
+      calendarId: targetEmail,
+      timeMin: new Date(dayStartMs).toISOString(),
+      timeMax: new Date(dayEndMs).toISOString(),
+      singleEvents: true,
+      maxResults: 50,
+    });
+    return (data.items ?? [])
+      .filter(blocksTime)
+      .filter((ev) => !!ev.start?.dateTime) // exclude all-day
+      .length;
+  } catch (err: unknown) {
+    const code = (err as { code?: number }).code;
+    if (code !== 403 && code !== 404) throw err;
+    // FreeBusy fallback: just count intervals (not perfect, no all-day filter)
+    try {
+      const fb = await calendar.freebusy.query({
+        requestBody: {
+          timeMin: new Date(dayStartMs).toISOString(),
+          timeMax: new Date(dayEndMs).toISOString(),
+          items: [{ id: targetEmail }],
+        },
+      });
+      return (fb.data.calendars?.[targetEmail]?.busy ?? []).length;
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
  * Creates an event on the asker's primary calendar with the target as
  * invitee and a Meet link attached. Returns the Calendar URL + Meet URL.
  */

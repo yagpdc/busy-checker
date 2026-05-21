@@ -5,6 +5,7 @@ import { clientForUser } from "../services/google.js";
 import {
   busyIntervalsAround,
   currentMeeting,
+  meetingsTodayCount,
   nextFreeSlot,
 } from "../services/calendar.js";
 import { findEmailInDirectory } from "../services/directory.js";
@@ -142,6 +143,7 @@ router.post("/", requireSession, async (req, res) => {
       busyAround: facts.suggestedSlot
         ? await busyIntervalsAround(asker, targetEmail, facts.suggestedSlot.start).catch(() => [])
         : [],
+      meetingsToday: await meetingsTodayCount(asker, targetEmail).catch(() => null),
     },
   });
 });
