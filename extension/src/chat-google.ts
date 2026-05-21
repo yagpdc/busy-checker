@@ -2,10 +2,42 @@
 // Runs only on chat.google.com. Detects open DMs, extracts the participant
 // name from <title>, injects a floating widget that asks the backend
 // whether the person is available + offers to schedule the next free slot.
-
-import { DEFAULT_SETTINGS, getSettings } from "./settings.js";
+//
+// NOTE: MV3 content scripts run as classic scripts (no ES module imports).
+// All helpers must be inlined here. The duplicated Settings shape mirrors
+// extension/src/settings.ts (which is used by the popup).
 
 const WIDGET_ID = "busy-checker-widget";
+
+type Settings = {
+  workStartHour: number;
+  workEndHour: number;
+  eventColor: string;
+};
+const DEFAULT_SETTINGS: Settings = {
+  workStartHour: 9,
+  workEndHour: 18,
+  eventColor: "#3b82f6",
+};
+async function getSettings(): Promise<Settings> {
+  const { settings } = await chrome.storage.local.get("settings");
+  const s = (settings ?? {}) as Partial<Settings>;
+  const hex =
+    typeof s.eventColor === "string" && /^#[0-9a-f]{6}$/i.test(s.eventColor)
+      ? s.eventColor
+      : DEFAULT_SETTINGS.eventColor;
+  return {
+    workStartHour:
+      typeof s.workStartHour === "number"
+        ? s.workStartHour
+        : DEFAULT_SETTINGS.workStartHour,
+    workEndHour:
+      typeof s.workEndHour === "number"
+        ? s.workEndHour
+        : DEFAULT_SETTINGS.workEndHour,
+    eventColor: hex,
+  };
+}
 
 function textColorFor(hex: string): string {
   let h = hex.replace("#", "");
