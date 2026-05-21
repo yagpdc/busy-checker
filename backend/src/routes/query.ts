@@ -2,11 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireSession } from "../middleware/session.js";
 import { clientForUser } from "../services/google.js";
-import {
-  currentMeeting,
-  eventsForDay,
-  nextFreeSlot,
-} from "../services/calendar.js";
+import { currentMeeting, nextFreeSlot } from "../services/calendar.js";
 import { findEmailInDirectory } from "../services/directory.js";
 import { emailForNameHint, presenceForEmail } from "../services/presence.js";
 import { openaiEnabled, parseQuestion } from "../services/openai.js";
@@ -108,16 +104,6 @@ router.post("/", requireSession, async (req, res) => {
         })
       : null;
 
-  // Fetch the target's events for the suggested slot's day (or today if
-  // we don't have a suggestion). Empty list if calendar isn't readable.
-  const dayAnchor = suggestedSlot ? suggestedSlot.start : new Date();
-  const dayEvents = await eventsForDay(asker, targetEmail, dayAnchor).catch(
-    (err) => {
-      console.error("events list failed", err);
-      return [];
-    },
-  );
-
   const facts = {
     targetEmail,
     online: presence.online,
@@ -149,7 +135,6 @@ router.post("/", requireSession, async (req, res) => {
         : null,
       outsideWorkingHours: facts.outsideWorkingHours,
       workingHours: facts.workingHours,
-      dayEvents,
     },
   });
 });

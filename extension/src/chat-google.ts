@@ -53,20 +53,7 @@ function openWidget(name: string): void {
   host.style.cssText =
     "all:initial;position:fixed!important;bottom:24px!important;right:24px!important;z-index:2147483647!important;";
   const shadow = host.attachShadow({ mode: "open" });
-  // Inject @font-face pointing at the bundled DSEG7 woff2. We compute the
-  // chrome-extension:// URL at runtime because the extension ID is only
-  // known at runtime and shadow DOM stylesheets need an absolute URL.
-  const fontUrl = chrome.runtime.getURL("fonts/DSEG7Modern-Light.woff2");
-  shadow.innerHTML =
-    `<style>
-      @font-face {
-        font-family: "BC-Digital";
-        src: url("${fontUrl}") format("woff2");
-        font-display: swap;
-        font-weight: normal;
-        font-style: normal;
-      }
-    </style>` + WIDGET_HTML;
+  shadow.innerHTML = WIDGET_HTML;
   (document.documentElement || document.body).appendChild(host);
 
   const $ = <T extends Element = HTMLElement>(sel: string) =>
@@ -83,14 +70,6 @@ function openWidget(name: string): void {
 }
 
 type Slot = { start: string; end: string };
-type DayEvent = {
-  id: string;
-  title: string | null;
-  start: string;
-  end: string;
-  kind: "meeting" | "outOfOffice" | "focusTime";
-  allDay: boolean;
-};
 type Facts = {
   targetEmail: string;
   online: boolean;
@@ -106,16 +85,7 @@ type Facts = {
   suggestedSlot: Slot | null;
   outsideWorkingHours: boolean;
   workingHours: { start: number; end: number };
-  dayEvents: DayEvent[];
 };
-
-// Stable color from a title hash. Sober palette so the dark tile stays calm.
-const EVENT_COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f472b6", "#a78bfa"];
-function colorFor(title: string): string {
-  let h = 0;
-  for (let i = 0; i < title.length; i++) h = (h * 31 + title.charCodeAt(i)) | 0;
-  return EVENT_COLORS[Math.abs(h) % EVENT_COLORS.length];
-}
 
 function formatTime(d: Date): string {
   return d.toLocaleTimeString("pt-BR", {
@@ -202,10 +172,8 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
 
     // === Slot navigation state ===
     // We start with the first slot from /query; arrows walk a locally-cached
-    // list, fetching forward from /slots/next on demand. Events for each
-    // slot's day are cached alongside.
+    // list, fetching forward from /slots/next on demand.
     const slots: Slot[] = [facts.suggestedSlot];
-    const eventsBySlotIndex: DayEvent[][] = [facts.dayEvents ?? []];
     let cursor = 0;
     let currentSlot = slots[cursor];
     let selectedDur = 30;
@@ -215,36 +183,6 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     const slotDay = $("#bc-cal-day") as HTMLElement;
     const slotMonth = $("#bc-cal-month") as HTMLElement;
     const slotWeekday = $("#bc-slot-weekday") as HTMLElement;
-    const eventsList = $("#bc-events") as HTMLElement;
-
-    const renderEvents = (events: DayEvent[]) => {
-      eventsList.innerHTML = "";
-      const visible = events.slice(0, 4);
-      visible.forEach((ev) => {
-        const row = document.createElement("div");
-        row.className = "bc-event";
-        const titleText = ev.title?.trim() || "(sem título)";
-        const color = colorFor(titleText);
-        const timeText = ev.allDay
-          ? "dia"
-          : formatTime(new Date(ev.start));
-        row.innerHTML = `
-          <span class="bc-event-bar" style="background:${color}"></span>
-          <span class="bc-event-time">${timeText}</span>
-          <span class="bc-event-title"></span>
-        `;
-        (row.querySelector(".bc-event-title") as HTMLElement).textContent =
-          titleText;
-        eventsList.appendChild(row);
-      });
-      if (events.length > visible.length) {
-        const more = document.createElement("div");
-        more.className = "bc-event-more";
-        more.textContent = `+ ${events.length - visible.length} eventos`;
-        eventsList.appendChild(more);
-      }
-      eventsList.hidden = events.length === 0;
-    };
 
     // The time displayed right now (may differ from currentSlot.start while
     // animating). Used as the "from" point when chaining nav clicks mid-flight.
@@ -310,9 +248,6 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         writeCalendar(start);
         displayedTime = start;
       }
-
-      // Events for the slot's day (cached per cursor)
-      renderEvents(eventsBySlotIndex[cursor] ?? []);
       const durText =
         gapMin >= 60
           ? `${Math.floor(gapMin / 60)}h${gapMin % 60 ? ` ${gapMin % 60}min` : ""}`
@@ -392,17 +327,13 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
           after: currentSlot.end,
         });
         if (!res?.ok) throw new Error(res?.error ?? "unknown");
-        const { slot, dayEvents: nextDayEvents } = res.data as {
-          slot: Slot | null;
-          dayEvents: DayEvent[];
-        };
+        const slot = (res.data as { slot: Slot | null }).slot;
         if (!slot) {
           noMoreSlots = true;
           renderSlot(currentSlot); // updates button to "—" and hint
           return;
         }
         slots.push(slot);
-        eventsBySlotIndex.push(nextDayEvents ?? []);
         cursor++;
         flashSlot("next");
         renderSlot(slot, true); // re-enables and shows "↓" again
@@ -629,6 +560,15 @@ const WIDGET_HTML = `
 
   #bc-slot {
     margin-top: 14px;
+    padding: 14px;
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+  #bc-slot:hover {
+    background: #f5f5f5;
+    border-color: #d1d5db;
   }
   #bc-slot:not([hidden]) {
     animation: bc-section-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
@@ -637,8 +577,8 @@ const WIDGET_HTML = `
     from { opacity: 0; transform: translateY(-4px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  /* Time + calendar tick frame-by-frame in JS. Supporting elements
-     slide in/out directionally. */
+  /* The time + calendar tick frame-by-frame in JS (flip-clock).
+     The supporting elements just slide in/out directionally. */
   #bc-slot[data-flash="next"] #bc-slot-hint,
   #bc-slot[data-flash="next"] #bc-dur-row {
     animation: bc-flash-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -655,6 +595,7 @@ const WIDGET_HTML = `
     from { opacity: 0; transform: translateY(-10px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+  /* Stagger so the supporting info comes in after the ticking starts */
   #bc-slot[data-flash] #bc-slot-hint { animation-delay: 0.18s; }
   #bc-slot[data-flash] #bc-dur-row   { animation-delay: 0.26s; }
 
@@ -662,140 +603,74 @@ const WIDGET_HTML = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 8px;
+    gap: 12px;
   }
-  #bc-slot-section {
-    font-size: 11px;
-    color: #6b7280;
-    font-weight: 500;
-    letter-spacing: -0.01em;
+  #bc-slot-display {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 14px;
   }
 
-  /* === Tiles row === */
-  #bc-tiles {
-    display: grid;
-    grid-template-columns: 76px 1fr;
-    gap: 8px;
-  }
-  .bc-tile {
-    background: #18181b;
-    color: #fafafa;
-    border-radius: 12px;
+  /* === Calendar tile === */
+  #bc-cal {
+    width: 56px;
+    height: 56px;
+    border-radius: 9px;
     overflow: hidden;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
-  }
-  #bc-tile-date {
+    border: 1px solid #d4d4d8;
+    background: #ffffff;
+    flex-shrink: 0;
+    box-shadow:
+      0 1px 2px rgba(0,0,0,0.05),
+      inset 0 -1px 0 rgba(0,0,0,0.02);
     display: flex;
     flex-direction: column;
-    align-items: stretch;
-    padding: 0;
   }
   #bc-cal-month {
-    color: #ef4444;
-    font-size: 10px;
+    background: #18181b;
+    color: #fafafa;
+    font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.10em;
-    text-align: left;
-    padding: 8px 10px 0;
+    text-align: center;
+    padding: 4px 0 3px;
     line-height: 1;
     font-variant-numeric: tabular-nums;
   }
   #bc-cal-day {
     flex: 1;
-    font-size: 32px;
+    font-size: 26px;
     font-weight: 500;
-    letter-spacing: -0.04em;
-    color: #fafafa;
-    text-align: left;
+    letter-spacing: -0.03em;
+    color: #18181b;
+    text-align: center;
     line-height: 1;
-    padding: 4px 10px 0;
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" on, "lnum" on;
-  }
-  #bc-slot-weekday {
-    font-size: 10px;
-    color: #a1a1aa;
-    padding: 0 10px 8px;
-    letter-spacing: -0.01em;
-    text-transform: lowercase;
-  }
-
-  #bc-tile-time {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 14px 16px;
-    min-height: 76px;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" on, "lnum" on;
+    background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
   }
 
-  /* === Events list === */
-  #bc-events {
-    margin-top: 10px;
-    background: #18181b;
-    border-radius: 12px;
-    padding: 12px 14px;
-    color: #fafafa;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  #bc-events:not([hidden]) {
-    animation: bc-section-in 0.4s 0.05s cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-  .bc-event {
-    display: grid;
-    grid-template-columns: 3px 42px 1fr;
-    gap: 10px;
-    align-items: center;
-    min-height: 18px;
-  }
-  .bc-event-bar {
-    height: 22px;
-    border-radius: 2px;
-    align-self: center;
-  }
-  .bc-event-time {
-    font-size: 11px;
-    color: #a1a1aa;
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" on;
-  }
-  .bc-event-title {
-    font-size: 12px;
-    color: #fafafa;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-weight: 500;
-    letter-spacing: -0.01em;
-  }
-  .bc-event-more {
-    font-size: 11px;
-    color: #71717a;
-    padding-left: 13px;
-    margin-top: 2px;
-  }
-  #bc-slot[data-flash="next"] #bc-events,
-  #bc-slot[data-flash="prev"] #bc-events {
-    animation-delay: 0.10s;
-  }
-  #bc-slot[data-flash="next"] #bc-events { animation: bc-flash-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
-  #bc-slot[data-flash="prev"] #bc-events { animation: bc-flash-down 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  #bc-time-block { min-width: 0; }
   #bc-slot-nav { display: flex; gap: 2px; }
   #bc-slot-nav {
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     gap: 4px;
     flex-shrink: 0;
   }
   #bc-slot-nav button {
     background: transparent;
     border: 1px solid #e5e7eb;
-    color: #6b7280;
+    color: #9ca3af;
     width: 26px;
     height: 26px;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 12px;
     line-height: 1;
     cursor: pointer;
     padding: 0;
@@ -814,21 +689,26 @@ const WIDGET_HTML = `
     cursor: not-allowed;
   }
   #bc-slot-time {
-    font-family: "BC-Digital", ui-monospace, "SF Mono", "JetBrains Mono",
-      Consolas, Menlo, monospace;
-    font-size: 44px;
-    font-weight: normal;
-    letter-spacing: 0;
+    font-size: 30px;
+    font-weight: 300;
+    letter-spacing: -0.035em;
     line-height: 1;
-    color: #fafafa;
+    color: #111827;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" on, "lnum" on;
-    -webkit-font-smoothing: antialiased;
+  }
+  #bc-slot-weekday {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 6px;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    text-transform: lowercase;
   }
   #bc-slot-hint {
     font-size: 11px;
     color: #9ca3af;
-    margin-top: 10px;
+    margin-top: 12px;
     font-weight: 400;
     font-variant-numeric: tabular-nums;
   }
@@ -999,23 +879,21 @@ const WIDGET_HTML = `
     <p id="bc-reply">consultando agenda</p>
     <div id="bc-slot" hidden>
       <div id="bc-slot-head">
-        <span id="bc-slot-section">Próxima janela</span>
+        <div id="bc-slot-display">
+          <div id="bc-cal" aria-hidden="true">
+            <div id="bc-cal-month"></div>
+            <div id="bc-cal-day"></div>
+          </div>
+          <div id="bc-time-block">
+            <div id="bc-slot-time"></div>
+            <div id="bc-slot-weekday"></div>
+          </div>
+        </div>
         <div id="bc-slot-nav">
-          <button id="bc-slot-prev" type="button" title="janela anterior" disabled>←</button>
-          <button id="bc-slot-next" type="button" title="próxima janela">→</button>
+          <button id="bc-slot-prev" type="button" title="janela anterior" disabled>↑</button>
+          <button id="bc-slot-next" type="button" title="próxima janela">↓</button>
         </div>
       </div>
-      <div id="bc-tiles">
-        <div id="bc-tile-date" class="bc-tile" aria-hidden="true">
-          <div id="bc-cal-month"></div>
-          <div id="bc-cal-day"></div>
-          <div id="bc-slot-weekday"></div>
-        </div>
-        <div id="bc-tile-time" class="bc-tile">
-          <div id="bc-slot-time"></div>
-        </div>
-      </div>
-      <div id="bc-events" hidden></div>
       <div id="bc-slot-hint"></div>
     </div>
     <button id="bc-schedule" hidden type="button">Agendar nesta janela</button>

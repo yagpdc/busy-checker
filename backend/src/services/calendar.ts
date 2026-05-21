@@ -215,66 +215,6 @@ export async function nextFreeSlot(
   return null;
 }
 
-export type DayEvent = {
-  id: string;
-  title: string | null;
-  start: string; // ISO
-  end: string; // ISO
-  kind: MeetingKind;
-  allDay: boolean;
-};
-
-/**
- * Lists `targetEmail`'s blocking events for the local SP day that
- * contains `dayAnchor`. Returns [] if we can't read event details.
- */
-export async function eventsForDay(
-  asker: OAuth2Client,
-  targetEmail: string,
-  dayAnchor: Date,
-  tzOffsetHours = -3,
-): Promise<DayEvent[]> {
-  const calendar = google.calendar({ version: "v3", auth: asker });
-  // Compute SP day bounds. anchor in SP = UTC + tz
-  const sp = new Date(dayAnchor.getTime() + tzOffsetHours * 60 * 60 * 1000);
-  const y = sp.getUTCFullYear();
-  const m = sp.getUTCMonth();
-  const d = sp.getUTCDate();
-  const dayStartUtc = Date.UTC(y, m, d, -tzOffsetHours, 0, 0);
-  const dayEndUtc = Date.UTC(y, m, d + 1, -tzOffsetHours, 0, 0);
-
-  try {
-    const { data } = await calendar.events.list({
-      calendarId: targetEmail,
-      timeMin: new Date(dayStartUtc).toISOString(),
-      timeMax: new Date(dayEndUtc).toISOString(),
-      singleEvents: true,
-      orderBy: "startTime",
-      maxResults: 30,
-    });
-    return (data.items ?? [])
-      .filter(blocksTime)
-      .map((ev): DayEvent | null => {
-        const startIso = ev.start?.dateTime ?? ev.start?.date;
-        const endIso = ev.end?.dateTime ?? ev.end?.date;
-        if (!startIso || !endIso) return null;
-        return {
-          id: ev.id ?? "",
-          title: ev.summary ?? null,
-          start: new Date(startIso).toISOString(),
-          end: new Date(endIso).toISOString(),
-          kind: eventKind(ev.eventType),
-          allDay: !ev.start?.dateTime, // date-only = all-day
-        };
-      })
-      .filter((e): e is DayEvent => e !== null);
-  } catch (err: unknown) {
-    const code = (err as { code?: number }).code;
-    if (code !== 403 && code !== 404) throw err;
-    return [];
-  }
-}
-
 /**
  * Creates an event on the asker's primary calendar with the target as
  * invitee and a Meet link attached. Returns the Calendar URL + Meet URL.
