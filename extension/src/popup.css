@@ -179,6 +179,15 @@ pre {
   outline: 0;
   border-color: #111827;
 }
+#settings-section input[type="color"] {
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #ffffff;
+  cursor: pointer;
+}
 #settings-section button {
   margin-left: auto;
 }

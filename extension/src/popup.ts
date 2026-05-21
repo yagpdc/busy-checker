@@ -95,11 +95,13 @@ async function loadSettings(): Promise<void> {
   const s = await getSettings();
   $<HTMLInputElement>("work-start").value = String(s.workStartHour);
   $<HTMLInputElement>("work-end").value = String(s.workEndHour);
+  $<HTMLInputElement>("event-color").value = s.eventColor;
 }
 
 $<HTMLButtonElement>("save-settings").addEventListener("click", async () => {
   const ws = parseInt($<HTMLInputElement>("work-start").value, 10);
   const we = parseInt($<HTMLInputElement>("work-end").value, 10);
+  const color = $<HTMLInputElement>("event-color").value;
   const msg = $<HTMLParagraphElement>("settings-msg");
   msg.hidden = false;
   if (
@@ -116,8 +118,8 @@ $<HTMLButtonElement>("save-settings").addEventListener("click", async () => {
     return;
   }
   delete msg.dataset.error;
-  await setSettings({ workStartHour: ws, workEndHour: we });
-  msg.textContent = `Salvo: ${ws}h–${we}h.`;
+  await setSettings({ workStartHour: ws, workEndHour: we, eventColor: color });
+  msg.textContent = "Salvo. Recarregue a aba do Chat para aplicar.";
 });
 
 loadSettings().catch(() => {
@@ -127,4 +129,5 @@ loadSettings().catch(() => {
   $<HTMLInputElement>("work-end").value = String(
     DEFAULT_SETTINGS.workEndHour,
   );
+  $<HTMLInputElement>("event-color").value = DEFAULT_SETTINGS.eventColor;
 });

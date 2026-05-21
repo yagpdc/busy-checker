@@ -35,13 +35,17 @@
       <p id="error" hidden></p>
 
       <details id="settings-section">
-        <summary>Horário de trabalho</summary>
+        <summary>Configurações</summary>
         <div class="time-row">
-          <label for="work-start">Das</label>
+          <label for="work-start">Horário</label>
           <input id="work-start" type="number" min="0" max="23" />
-          <label for="work-end">até</label>
+          <span>até</span>
           <input id="work-end" type="number" min="1" max="24" />
           <span>h</span>
+        </div>
+        <div class="time-row">
+          <label for="event-color">Cor dos eventos</label>
+          <input id="event-color" type="color" />
           <button id="save-settings" type="button">Salvar</button>
         </div>
         <p id="settings-msg" hidden></p>

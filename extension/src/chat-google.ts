@@ -3,7 +3,19 @@
 // name from <title>, injects a floating widget that asks the backend
 // whether the person is available + offers to schedule the next free slot.
 
+import { DEFAULT_SETTINGS, getSettings } from "./settings.js";
+
 const WIDGET_ID = "busy-checker-widget";
+
+function textColorFor(hex: string): string {
+  let h = hex.replace("#", "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 150 ? "#111827" : "#ffffff";
+}
 
 // === URL / title watcher ===
 let lastKey: string | null = null;
@@ -90,19 +102,6 @@ type Facts = {
   meetingsToday: number | null;
 };
 
-// Stable color per title hash. Sober palette that reads well against light bg.
-const EVENT_COLORS = [
-  { bg: "rgba(96, 165, 250, 0.10)", bar: "#60a5fa" }, // blue
-  { bg: "rgba(52, 211, 153, 0.10)", bar: "#34d399" }, // green
-  { bg: "rgba(251, 191, 36, 0.12)", bar: "#fbbf24" }, // amber
-  { bg: "rgba(244, 114, 182, 0.10)", bar: "#f472b6" }, // pink
-  { bg: "rgba(167, 139, 250, 0.10)", bar: "#a78bfa" }, // violet
-];
-function colorFor(title: string): { bg: string; bar: string } {
-  let h = 0;
-  for (let i = 0; i < title.length; i++) h = (h * 31 + title.charCodeAt(i)) | 0;
-  return EVENT_COLORS[Math.abs(h) % EVENT_COLORS.length];
-}
 
 function formatTime(d: Date): string {
   return d.toLocaleTimeString("pt-BR", {
@@ -145,6 +144,9 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
   const $ = <T extends Element = HTMLElement>(sel: string) =>
     shadow.querySelector(sel) as T;
   const root = $("#bc-root") as HTMLElement;
+  const settings = await getSettings().catch(() => DEFAULT_SETTINGS);
+  const eventColor = settings.eventColor;
+  const eventTextColor = textColorFor(eventColor);
   const emailEl = $("#bc-email") as HTMLElement;
   const meetingsInfo = $("#bc-meetings-info") as HTMLElement;
   const statusText = $("#bc-status-text") as HTMLElement;
@@ -278,63 +280,98 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       timeAnimHandle = requestAnimationFrame(tick);
     };
 
-    // Renders the agenda as a vertical event list (Google Calendar-ish),
-    // with the suggested slot inserted in its chronological position.
+    // Renders the agenda as a vertical timeline (Google-Calendar-style):
+    // events are absolutely positioned by their start time, height is
+    // proportional to duration, and the suggested slot is drawn as a
+    // dashed empty block in chronological position.
+    const PX_PER_MIN = 0.95; // ~57 px per hour
+    const WINDOW_RANGE_MS = 2.5 * 60 * 60 * 1000; // ±2.5h around slot
+    const MIN_EVENT_HEIGHT = 28; // keep text readable on short events
+
     const renderAgenda = (slot: Slot, events: CalendarEvent[]) => {
       agendaEl.innerHTML = "";
-      type Item =
-        | { type: "event"; start: number; end: number; title: string }
-        | { type: "slot"; start: number; end: number };
       const slotStartMs = new Date(slot.start).getTime();
       const slotEndMs = new Date(slot.end).getTime();
-      const items: Item[] = events.map((e) => ({
-        type: "event",
-        start: new Date(e.start).getTime(),
-        end: new Date(e.end).getTime(),
-        title: (e.title ?? "").trim() || "(sem título)",
-      }));
-      items.push({ type: "slot", start: slotStartMs, end: slotEndMs });
-      items.sort((a, b) => a.start - b.start);
+      const winStart = slotStartMs - WINDOW_RANGE_MS;
+      const winEnd = slotStartMs + WINDOW_RANGE_MS;
+      const totalMin = (winEnd - winStart) / 60000;
+      agendaEl.style.height = `${totalMin * PX_PER_MIN}px`;
 
-      // Cap to 6 items, centered around the slot
-      const slotIdx = items.findIndex((it) => it.type === "slot");
-      const max = 6;
-      let start = Math.max(0, slotIdx - 2);
-      let end = Math.min(items.length, start + max);
-      if (end - start < max) start = Math.max(0, end - max);
-      const visible = items.slice(start, end);
-
-      for (const it of visible) {
-        const row = document.createElement("div");
-        row.className = "bc-ev";
-        const timeText = formatTime(new Date(it.start));
-        if (it.type === "slot") {
-          row.classList.add("bc-ev-slot");
-          const slotMin = Math.floor((it.end - it.start) / 60000);
-          const slotTitle =
-            slotMin >= 60
-              ? `slot livre · ${Math.floor(slotMin / 60)}h${slotMin % 60 ? ` ${slotMin % 60}min` : ""}`
-              : `slot livre · ${slotMin}min`;
-          row.innerHTML = `
-            <span class="bc-ev-bar"></span>
-            <span class="bc-ev-time">${timeText}</span>
-            <span class="bc-ev-title"></span>
-          `;
-          (row.querySelector(".bc-ev-title") as HTMLElement).textContent =
-            slotTitle;
-        } else {
-          const { bg, bar } = colorFor(it.title);
-          row.style.background = bg;
-          row.innerHTML = `
-            <span class="bc-ev-bar" style="background:${bar}"></span>
-            <span class="bc-ev-time">${timeText}</span>
-            <span class="bc-ev-title"></span>
-          `;
-          (row.querySelector(".bc-ev-title") as HTMLElement).textContent =
-            it.title;
-        }
-        agendaEl.appendChild(row);
+      // Hour gridlines + side labels
+      const hourMs = 60 * 60 * 1000;
+      const firstHour = Math.ceil(winStart / hourMs) * hourMs;
+      for (let t = firstHour; t < winEnd; t += hourMs) {
+        const topPx = ((t - winStart) / 60000) * PX_PER_MIN;
+        const line = document.createElement("div");
+        line.className = "bc-tl-line";
+        line.style.top = `${topPx}px`;
+        agendaEl.appendChild(line);
+        const lbl = document.createElement("div");
+        lbl.className = "bc-tl-hour";
+        lbl.style.top = `${topPx}px`;
+        lbl.textContent = formatTime(new Date(t));
+        agendaEl.appendChild(lbl);
       }
+
+      const sortedEvents = [...events].sort(
+        (a, b) =>
+          new Date(a.start).getTime() - new Date(b.start).getTime(),
+      );
+
+      for (const ev of sortedEvents) {
+        const eStart = new Date(ev.start).getTime();
+        const eEnd = new Date(ev.end).getTime();
+        const visStart = Math.max(eStart, winStart);
+        const visEnd = Math.min(eEnd, winEnd);
+        if (visEnd <= visStart) continue;
+        const topPx = ((visStart - winStart) / 60000) * PX_PER_MIN;
+        const heightPx = Math.max(
+          MIN_EVENT_HEIGHT,
+          ((visEnd - visStart) / 60000) * PX_PER_MIN,
+        );
+        const block = document.createElement("div");
+        block.className = "bc-ev";
+        block.style.top = `${topPx}px`;
+        block.style.height = `${heightPx}px`;
+        block.style.background = eventColor;
+        block.style.color = eventTextColor;
+        const titleText = (ev.title ?? "").trim() || "(sem título)";
+        block.innerHTML = `
+          <div class="bc-ev-time"></div>
+          <div class="bc-ev-title"></div>
+        `;
+        (block.querySelector(".bc-ev-time") as HTMLElement).textContent =
+          formatTime(new Date(eStart));
+        (block.querySelector(".bc-ev-title") as HTMLElement).textContent =
+          titleText;
+        agendaEl.appendChild(block);
+      }
+
+      // Suggested slot — dashed transparent block
+      const slotTopPx = ((slotStartMs - winStart) / 60000) * PX_PER_MIN;
+      const slotEndClipped = Math.min(slotEndMs, winEnd);
+      const slotHeightPx = Math.max(
+        MIN_EVENT_HEIGHT,
+        ((slotEndClipped - slotStartMs) / 60000) * PX_PER_MIN,
+      );
+      const slotMin = Math.floor((slotEndMs - slotStartMs) / 60000);
+      const slotTitle =
+        slotMin >= 60
+          ? `slot livre · ${Math.floor(slotMin / 60)}h${slotMin % 60 ? ` ${slotMin % 60}min` : ""}`
+          : `slot livre · ${slotMin}min`;
+      const slotBlock = document.createElement("div");
+      slotBlock.className = "bc-ev bc-ev-slot";
+      slotBlock.style.top = `${slotTopPx}px`;
+      slotBlock.style.height = `${slotHeightPx}px`;
+      slotBlock.innerHTML = `
+        <div class="bc-ev-time"></div>
+        <div class="bc-ev-title"></div>
+      `;
+      (slotBlock.querySelector(".bc-ev-time") as HTMLElement).textContent =
+        formatTime(new Date(slotStartMs));
+      (slotBlock.querySelector(".bc-ev-title") as HTMLElement).textContent =
+        slotTitle;
+      agendaEl.appendChild(slotBlock);
     };
 
     const fadeAgendaTo = (slot: Slot, events: CalendarEvent[]) => {
@@ -826,53 +863,80 @@ const WIDGET_HTML = `
     pointer-events: none;
   }
 
-  /* === Agenda (Google Calendar-style event list) === */
+  /* === Agenda (Google Calendar timeline) ===
+     Vertical timeline; events absolutely positioned by start time, height
+     proportional to duration. */
   #bc-agenda {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
+    position: relative;
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
     transition: opacity 0.18s ease;
+    padding-left: 36px; /* leaves space for hour labels */
   }
   #bc-slot[data-fading="true"] #bc-agenda { opacity: 0; }
-  .bc-ev {
-    display: grid;
-    grid-template-columns: 3px 44px 1fr;
-    gap: 8px;
-    align-items: center;
-    padding: 6px 10px 6px 6px;
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.02);
-    min-height: 28px;
+
+  .bc-tl-line {
+    position: absolute;
+    left: 36px;
+    right: 6px;
+    height: 1px;
+    background: rgba(0,0,0,0.05);
   }
-  .bc-ev-bar {
-    align-self: stretch;
-    border-radius: 2px;
+  .bc-tl-hour {
+    position: absolute;
+    left: 6px;
+    width: 30px;
+    font-size: 9px;
+    color: #9ca3af;
+    font-variant-numeric: tabular-nums;
+    transform: translateY(-50%);
+    letter-spacing: -0.02em;
+  }
+
+  .bc-ev {
+    position: absolute;
+    left: 38px;
+    right: 6px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 1px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
   }
   .bc-ev-time {
-    font-size: 11px;
-    color: #6b7280;
+    font-size: 10px;
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" on;
     letter-spacing: -0.02em;
+    opacity: 0.85;
+    line-height: 1.15;
   }
   .bc-ev-title {
-    font-size: 12px;
-    color: #111827;
-    font-weight: 500;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-    letter-spacing: -0.01em;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    white-space: normal;
   }
-  /* Suggested slot looks distinct: dashed border, no fill, bold time */
+  /* Slot: transparent + dashed border, dark text */
   .bc-ev.bc-ev-slot {
-    background: transparent;
+    background: transparent !important;
+    color: #111827 !important;
     border: 1.5px dashed #111827;
-    padding: 5px 9px 5px 5px;
+    box-shadow: none;
+    z-index: 2;
   }
-  .bc-ev.bc-ev-slot .bc-ev-bar { background: transparent; }
-  .bc-ev.bc-ev-slot .bc-ev-time { color: #111827; font-weight: 600; }
-  .bc-ev.bc-ev-slot .bc-ev-title { font-weight: 600; }
+  .bc-ev.bc-ev-slot .bc-ev-time { opacity: 1; font-weight: 600; }
 
   #bc-schedule {
     width: 100%;
