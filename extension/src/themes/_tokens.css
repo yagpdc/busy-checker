@@ -1,10 +1,16 @@
 /* ============================================================
    Toki — design tokens
    Base + semantic CSS variables for both color and type.
-   Themes (themes/*.css) override these at :root.
+   Themes (themes/*.css) override these at :root, :host.
+
+   Both selectors deliberately: `:root` matches <html> when loaded into
+   a normal document (popup); `:host` matches the shadow host when
+   loaded into a shadow DOM (widget). Without `:host`, the widget's
+   <link> would set vars on the wrong scope and every child would see
+   them as undefined — the widget renders without a background.
    ============================================================ */
 
-:root {
+:root, :host {
   /* ---------- COLOR: base ladder ---------- */
   --ink:        #111827;   /* canonical near-black: primary text, primary fill */
   --ink-2:      #1f2937;   /* hover on ink                                    */

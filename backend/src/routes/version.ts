@@ -11,7 +11,7 @@ import { Router } from "express";
 //   3. rebuild extension + create zip
 //   4. scp the zip to services.kipflow.io:/home/ubuntu/busy-checker/public/
 //   5. deploy backend
-export const LATEST_VERSION = "0.4.0";
+export const LATEST_VERSION = "0.4.1";
 const PUBLIC_BASE =
   process.env.PUBLIC_BASE_URL ?? "https://services.kipflow.io/busy-checker";
 
