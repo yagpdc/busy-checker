@@ -35,11 +35,23 @@ const body = z.object({
 });
 
 router.post("/", requireSession, async (req, res) => {
+  const t0 = Date.now();
   const parse = body.safeParse(req.body);
   if (!parse.success) {
+    console.warn("[query] bad_request", parse.error.issues);
     res.status(400).json({ error: "bad_request" });
     return;
   }
+  console.log(
+    "[query] in",
+    JSON.stringify({
+      hasEmail: !!parse.data.targetEmail,
+      hasName: !!parse.data.targetName,
+      hasQuestion: !!parse.data.question,
+      questionPreview: parse.data.question?.slice(0, 80) ?? null,
+      namePreview: parse.data.targetName ?? null,
+    }),
+  );
 
   let targetEmail = parse.data.targetEmail ?? null;
   let displayHint: string | null = parse.data.targetName ?? null;
@@ -67,15 +79,21 @@ router.post("/", requireSession, async (req, res) => {
       });
       return;
     }
-    const parsed = await parseQuestion(parse.data.question);
+    const parsed = await parseQuestion(parse.data.question).catch((err) => {
+      console.error("[query] parseQuestion failed", err);
+      return { targetEmail: null, targetHint: null };
+    });
+    console.log("[query] parsed", JSON.stringify(parsed));
     targetEmail = parsed.targetEmail;
     displayHint = displayHint ?? parsed.targetHint;
     if (!targetEmail && parsed.targetHint) {
       targetEmail = await resolveByHint(parsed.targetHint);
+      console.log("[query] resolveByHint", parsed.targetHint, "→", targetEmail);
     }
   }
 
   if (!targetEmail) {
+    console.log("[query] no target resolved, displayHint=", displayHint);
     res.json({
       reply: displayHint
         ? `Não achei "${displayHint}" no Workspace (nome ambíguo ou não encontrado — tenta com email).`
@@ -84,6 +102,7 @@ router.post("/", requireSession, async (req, res) => {
     });
     return;
   }
+  console.log("[query] resolved target=", targetEmail, "in", Date.now() - t0, "ms");
 
   const [presence, meeting] = await Promise.all([
     presenceForEmail(targetEmail),

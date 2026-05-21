@@ -20,13 +20,22 @@ const body = z.object({
 });
 
 router.post("/next", requireSession, async (req, res) => {
+  const t0 = Date.now();
   const parse = body.safeParse(req.body);
   if (!parse.success) {
+    console.warn("[slots/next] bad_request", parse.error.issues);
     res.status(400).json({ error: "bad_request" });
     return;
   }
   const asker = await clientForUser(req.session!.userId);
   const now = parse.data.after ? new Date(parse.data.after) : new Date();
+  console.log(
+    "[slots/next] in",
+    JSON.stringify({
+      target: parse.data.targetEmail,
+      after: now.toISOString(),
+    }),
+  );
   try {
     const slot = await nextFreeSlot(
       asker,
@@ -47,6 +56,19 @@ router.post("/next", requireSession, async (req, res) => {
           () => null,
         )
       : null;
+    console.log(
+      "[slots/next] out",
+      JSON.stringify({
+        target: parse.data.targetEmail,
+        gotSlot: !!slot,
+        slot: slot
+          ? { start: slot.start.toISOString(), end: slot.end.toISOString() }
+          : null,
+        events: evts.length,
+        meetingsToday,
+        ms: Date.now() - t0,
+      }),
+    );
     res.json({
       slot: slot
         ? { start: slot.start.toISOString(), end: slot.end.toISOString() }
@@ -55,7 +77,14 @@ router.post("/next", requireSession, async (req, res) => {
       meetingsToday,
     });
   } catch (err) {
-    console.error("slots/next failed", err);
+    console.error(
+      "[slots/next] failed",
+      parse.data.targetEmail,
+      "after",
+      Date.now() - t0,
+      "ms:",
+      err,
+    );
     res
       .status(500)
       .json({ error: "slots_failed", message: (err as Error).message });

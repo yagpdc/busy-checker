@@ -137,28 +137,36 @@ function endLoading(): void {
   $<HTMLButtonElement>("ask").disabled = false;
 }
 
+// Heuristic for splitting input. The naive "matches letter/space regex →
+// it's a name" rule misclassifies PT-BR sentences like "o diogo está
+// livre" because they only contain letters and spaces — the backend
+// then directory-searches the whole sentence and finds nothing. Treat
+// anything that looks like a question (punctuation, question word,
+// state verb, 5+ words) as a free-form question and let OpenAI parse
+// who they're asking about.
+const QUESTION_WORDS_RE =
+  /\b(quem|onde|quando|como|qual|quanto|por\s+que|porqu[eê]|est[aá]|t[aá]|fica|tem|vai|livre|ocupad[oa]|hora|amanh[aã]|hoje|agora|agenda|reuni[aã]o|meeting)\b/i;
+
+function classifyInput(q: string): {
+  type: "query";
+  targetEmail?: string;
+  targetName?: string;
+  question?: string;
+} {
+  const emailMatch = q.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
+  if (emailMatch) return { type: "query", targetEmail: emailMatch[0] };
+  const wordCount = q.split(/\s+/).filter(Boolean).length;
+  const looksLikeQuestion =
+    q.includes("?") || wordCount > 4 || QUESTION_WORDS_RE.test(q);
+  if (looksLikeQuestion) return { type: "query", question: q };
+  if (/^[\p{L}\s.'-]{2,80}$/u.test(q)) return { type: "query", targetName: q };
+  return { type: "query", question: q };
+}
+
 async function runQuery(q: string): Promise<void> {
   clearError();
   if (!q) return;
-  // Input strategy:
-  //  - contains '@' → treat as email
-  //  - looks like a plain name (no spaces fancy chars) → send as targetName
-  //    so the backend resolves via local users / Workspace directory
-  //  - everything else → send as free-text question (needs OpenAI)
-  const emailMatch = q.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
-  let payload: {
-    type: "query";
-    targetEmail?: string;
-    targetName?: string;
-    question?: string;
-  };
-  if (emailMatch) {
-    payload = { type: "query", targetEmail: emailMatch[0] };
-  } else if (/^[\p{L}\s.'-]{2,80}$/u.test(q)) {
-    payload = { type: "query", targetName: q };
-  } else {
-    payload = { type: "query", question: q };
-  }
+  const payload = classifyInput(q);
   showLoading();
   try {
     const data = await send<{ reply: string; facts: unknown }>(payload);
@@ -184,20 +192,19 @@ $<HTMLTextAreaElement>("question").addEventListener("keydown", (ev) => {
 });
 
 // === Suggestion chips ===
-// Two chips are starters (focus + prefill the box); one is a full question
-// the user can fire immediately. Treat data-q ending with " " as a starter.
+// Each chip is a starter: prefill the textarea with a question template,
+// focus it, and put the caret where the user should type the person's
+// name. data-q is the prefix; optional data-tail is the suffix after
+// the name (e.g. "está livre agora?"). No chip auto-submits — the user
+// always names someone before sending.
 document.querySelectorAll<HTMLButtonElement>(".chip").forEach((chip) => {
   chip.addEventListener("click", () => {
-    const q = chip.dataset.q ?? "";
+    const prefix = chip.dataset.q ?? "";
+    const tail = chip.dataset.tail ?? "";
     const ta = $<HTMLTextAreaElement>("question");
-    ta.value = q;
+    ta.value = prefix + tail;
     ta.focus();
-    // Place cursor at end so the user can complete the prefilled fragment.
-    ta.setSelectionRange(q.length, q.length);
-    if (!q.endsWith(" ") && !q.endsWith("?")) return;
-    if (q.endsWith("?")) {
-      void runQuery(q.trim());
-    }
+    ta.setSelectionRange(prefix.length, prefix.length);
   });
 });
 

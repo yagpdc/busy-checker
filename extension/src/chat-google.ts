@@ -692,10 +692,17 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
     const PREFETCH_LOOKAHEAD_DAYS = 3;
 
     // Fetches exactly one more day, anchored at the latest cached entry.
+    //
+    // Includes a hard timeout so the → arrow can never get permanently
+    // stuck in the "…" state if the backend hangs. After PREFETCH_TIMEOUT
+    // we surface the failure and reset the spinner so the user can click
+    // again instead of being trapped.
+    const PREFETCH_TIMEOUT_MS = 20_000;
     const prefetchOneDay = async (): Promise<void> => {
       if (noMoreDays || nextDayFetching) return;
       nextDayFetching = true;
       updateSideLabels();
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
       try {
         // Anchor at the LAST cached entry's last known slot — not the
         // currently displayed slot — so successive prefetches chain
@@ -705,11 +712,21 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
         const after = nextSpDayMidnight(
           new Date(tailSlot.start),
         ).toISOString();
-        const res = await chrome.runtime.sendMessage({
+        const sendPromise = chrome.runtime.sendMessage({
           type: "nextSlot",
           targetEmail: facts.targetEmail,
           after,
         });
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(
+            () => reject(new Error("prefetch_timeout")),
+            PREFETCH_TIMEOUT_MS,
+          );
+        });
+        const res = (await Promise.race([sendPromise, timeoutPromise])) as
+          | { ok: true; data: unknown }
+          | { ok: false; error: string }
+          | undefined;
         if (res?.ok) {
           const {
             slot,
@@ -730,10 +747,15 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
           } else {
             noMoreDays = true;
           }
+        } else if (res && !res.ok) {
+          console.error("[busy-checker] prefetch backend error", res.error);
         }
       } catch (err) {
+        // Timeout OR thrown error. Either way: don't latch nextDayFetching
+        // — the finally below clears it so the button comes back to life.
         console.error("[busy-checker] prefetch failed", err);
       } finally {
+        if (timeoutHandle !== null) clearTimeout(timeoutHandle);
         nextDayFetching = false;
         updateSideLabels();
       }
