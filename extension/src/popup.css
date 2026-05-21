@@ -7,6 +7,12 @@
 
 * { box-sizing: border-box; }
 
+/* Force the HTML `hidden` attribute to win over any author display rule.
+   Without this, classes like .update-modal with `display: flex` cancel
+   the user-agent `[hidden] { display: none }` (same specificity) and
+   the element stays visible even when JS sets `el.hidden = true`. */
+[hidden] { display: none !important; }
+
 body {
   width: 360px;
   margin: 0;
