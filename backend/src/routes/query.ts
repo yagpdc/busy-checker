@@ -96,18 +96,16 @@ router.post("/", requireSession, async (req, res) => {
     workEnd,
   );
 
-  // Suggest a slot whenever the answer is "not available right now":
-  // either actively in a meeting, or outside the asker's working hours.
-  const suggestedSlot =
-    meeting.busy || outsideWorkingHours
-      ? await nextFreeSlot(asker, targetEmail, {
-          workStartHour: workStart,
-          workEndHour: workEnd,
-        }).catch((err) => {
-          console.error("freebusy lookup failed", err);
-          return null;
-        })
-      : null;
+  // Always compute a suggested slot — even when the target is currently
+  // free, the widget needs SOMETHING to anchor the agenda preview and a
+  // future window the asker might want to schedule into.
+  const suggestedSlot = await nextFreeSlot(asker, targetEmail, {
+    workStartHour: workStart,
+    workEndHour: workEnd,
+  }).catch((err) => {
+    console.error("freebusy lookup failed", err);
+    return null;
+  });
 
   const facts = {
     targetEmail,
