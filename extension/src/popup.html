@@ -6,68 +6,171 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <header>
-      <div class="brand">
-        <span class="brand-kanji">時</span>
-        <span class="brand-name">Toki</span>
-      </div>
-      <div class="user-area">
-        <span id="user-email"></span>
-        <button id="sign-in" type="button">Entrar com Google</button>
-        <button id="sign-out" type="button" hidden>Sair</button>
-      </div>
-    </header>
+    <!-- === HOME view === -->
+    <section id="view-home" class="view">
+      <header>
+        <div class="brand">
+          <span class="brand-kanji">時</span>
+          <span class="brand-name">Toki</span>
+        </div>
+        <div class="header-actions">
+          <button
+            id="open-settings"
+            type="button"
+            class="icon-btn"
+            aria-label="Configurações"
+            title="Configurações"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="3"></circle>
+              <path
+                d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"
+              ></path>
+            </svg>
+          </button>
+          <span id="user-email"></span>
+          <button id="sign-in" type="button">Entrar</button>
+          <button id="sign-out" type="button" hidden>Sair</button>
+        </div>
+      </header>
 
-    <main>
-      <div class="prompt-box">
-        <textarea
-          id="question"
-          rows="2"
-          placeholder="email ou nome de alguém"
-        ></textarea>
-        <button id="ask" type="button" class="prompt-send" aria-label="Consultar">
+      <main>
+        <div class="greeting">
+          <p id="greeting-line" class="greeting-title">Olá</p>
+          <p class="greeting-sub">
+            Pergunte sobre a agenda de alguém — eu respondo com base no
+            calendário em tempo real.
+          </p>
+        </div>
+
+        <div class="prompt-box">
+          <textarea
+            id="question"
+            rows="2"
+            placeholder="Ex: o Lucas está livre amanhã às 14h?"
+          ></textarea>
+          <button
+            id="ask"
+            type="button"
+            class="prompt-send"
+            aria-label="Consultar"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="5 12 12 5 19 12"></polyline>
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+            </svg>
+          </button>
+        </div>
+
+        <div class="suggestions" id="suggestions">
+          <button class="chip" type="button" data-q="Quem está em reunião agora?">
+            Quem está em reunião agora?
+          </button>
+          <button class="chip" type="button" data-q="Quando o ">
+            Quando alguém está livre…
+          </button>
+          <button class="chip" type="button" data-q="Próximo horário do ">
+            Próximo horário do…
+          </button>
+        </div>
+
+        <section id="result" hidden>
+          <p id="reply"></p>
+          <details>
+            <summary>Detalhes</summary>
+            <pre id="facts"></pre>
+          </details>
+        </section>
+
+        <p id="error" hidden></p>
+      </main>
+    </section>
+
+    <!-- === SETTINGS view === -->
+    <section id="view-settings" class="view" hidden>
+      <header>
+        <button
+          id="close-settings"
+          type="button"
+          class="icon-btn back-btn"
+          aria-label="Voltar"
+          title="Voltar"
+        >
           <svg
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            stroke-width="2.5"
+            stroke-width="2"
             stroke-linecap="round"
             stroke-linejoin="round"
             aria-hidden="true"
           >
-            <polyline points="5 12 12 5 19 12"></polyline>
-            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <polyline points="15 18 9 12 15 6"></polyline>
           </svg>
         </button>
-      </div>
+        <span class="settings-title">Configurações</span>
+        <span class="header-spacer"></span>
+      </header>
 
-      <section id="result" hidden>
-        <p id="reply"></p>
-        <details>
-          <summary>Detalhes</summary>
-          <pre id="facts"></pre>
-        </details>
-      </section>
-
-      <p id="error" hidden></p>
-
-      <details id="settings-section">
-        <summary>Configurações</summary>
-        <div class="time-row">
-          <label for="work-start">Horário</label>
-          <input id="work-start" type="number" min="0" max="23" />
-          <span class="sep">até</span>
-          <input id="work-end" type="number" min="1" max="24" />
-          <span class="sep">h</span>
+      <main>
+        <div class="setting-row toggle-row">
+          <div class="setting-label">
+            <span class="setting-name">Widget no Google Chat</span>
+            <span class="setting-help"
+              >Aparece flutuando ao abrir uma DM. Desligue para ocultar.</span
+            >
+          </div>
+          <label class="switch">
+            <input id="widget-enabled" type="checkbox" />
+            <span class="slider" aria-hidden="true"></span>
+          </label>
         </div>
-        <div class="time-row">
-          <label for="event-color">Cor dos eventos</label>
+
+        <div class="setting-row">
+          <div class="setting-label">
+            <span class="setting-name">Horário de trabalho</span>
+            <span class="setting-help"
+              >Define a janela em que sugiro reuniões.</span
+            >
+          </div>
+          <div class="time-controls">
+            <input id="work-start" type="number" min="0" max="23" />
+            <span class="sep">até</span>
+            <input id="work-end" type="number" min="1" max="24" />
+            <span class="sep">h</span>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-label">
+            <span class="setting-name">Cor dos eventos</span>
+            <span class="setting-help">Usada no preview da agenda.</span>
+          </div>
           <input id="event-color" type="color" />
-          <button id="save-settings" type="button">Salvar</button>
         </div>
-        <p id="settings-msg" hidden></p>
-      </details>
-    </main>
+
+        <div class="settings-footer">
+          <button id="save-settings" type="button">Salvar</button>
+          <p id="settings-msg" hidden></p>
+        </div>
+      </main>
+    </section>
 
     <script type="module" src="popup.js"></script>
   </body>

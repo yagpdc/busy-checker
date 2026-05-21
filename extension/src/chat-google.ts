@@ -13,11 +13,13 @@ type Settings = {
   workStartHour: number;
   workEndHour: number;
   eventColor: string;
+  widgetEnabled: boolean;
 };
 const DEFAULT_SETTINGS: Settings = {
   workStartHour: 9,
   workEndHour: 18,
   eventColor: "#3b82f6",
+  widgetEnabled: true,
 };
 async function getSettings(): Promise<Settings> {
   const { settings } = await chrome.storage.local.get("settings");
@@ -36,8 +38,17 @@ async function getSettings(): Promise<Settings> {
         ? s.workEndHour
         : DEFAULT_SETTINGS.workEndHour,
     eventColor: hex,
+    widgetEnabled:
+      typeof s.widgetEnabled === "boolean"
+        ? s.widgetEnabled
+        : DEFAULT_SETTINGS.widgetEnabled,
   };
 }
+
+// Cached at module scope so the tight reactToState loop doesn't have to
+// await chrome.storage on every tick. Initialized in bootstrap below;
+// kept in sync via chrome.storage.onChanged.
+let widgetEnabled = DEFAULT_SETTINGS.widgetEnabled;
 
 // Google Chat enforces Trusted Types: setting .innerHTML with a raw string
 // throws. Register an extension policy that returns the string verbatim, or
@@ -130,6 +141,16 @@ function currentConversationName(): string | null {
 }
 
 function reactToState(): void {
+  // Master kill-switch — when the user disables the widget in the popup,
+  // make sure any mounted instance is torn down and skip work on every
+  // subsequent tick until they flip it back on.
+  if (!widgetEnabled) {
+    if (document.getElementById(WIDGET_ID)) {
+      removeWidget();
+      lastKey = null;
+    }
+    return;
+  }
   const name = currentConversationName();
   const key = name ? `${location.pathname}::${name}` : null;
   const widgetExists = !!document.getElementById(WIDGET_ID);
@@ -1606,5 +1627,28 @@ const WIDGET_HTML = `
 const obs = new MutationObserver(reactToState);
 obs.observe(document, { subtree: true, childList: true, characterData: true });
 window.addEventListener("popstate", reactToState);
-reactToState();
+
+// Seed widgetEnabled from storage before the first reactToState tick.
+// If the user has the widget off, this prevents a brief flash of the
+// loading card on tab open.
+getSettings()
+  .then((s) => {
+    widgetEnabled = s.widgetEnabled;
+    reactToState();
+  })
+  .catch(() => reactToState());
+
+// React live to popup toggles — no F5 needed.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes.settings) return;
+  const next = (changes.settings.newValue ?? {}) as Partial<Settings>;
+  const enabled =
+    typeof next.widgetEnabled === "boolean"
+      ? next.widgetEnabled
+      : DEFAULT_SETTINGS.widgetEnabled;
+  if (enabled === widgetEnabled) return;
+  widgetEnabled = enabled;
+  reactToState();
+});
+
 setInterval(reactToState, 2000);

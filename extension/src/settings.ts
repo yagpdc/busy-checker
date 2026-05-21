@@ -6,12 +6,14 @@ export type Settings = {
   workStartHour: number; // inclusive, 0-23
   workEndHour: number; // exclusive, 1-24
   eventColor: string; // hex (#rrggbb) — applied uniformly to all preview events
+  widgetEnabled: boolean; // false → don't mount the floating widget on Google Chat
 };
 
 export const DEFAULT_SETTINGS: Settings = {
   workStartHour: 9,
   workEndHour: 18,
   eventColor: "#3b82f6",
+  widgetEnabled: true,
 };
 
 export async function getSettings(): Promise<Settings> {
@@ -21,6 +23,10 @@ export async function getSettings(): Promise<Settings> {
     workStartHour: clamp(s.workStartHour ?? DEFAULT_SETTINGS.workStartHour, 0, 23),
     workEndHour: clamp(s.workEndHour ?? DEFAULT_SETTINGS.workEndHour, 1, 24),
     eventColor: validHex(s.eventColor) ? s.eventColor! : DEFAULT_SETTINGS.eventColor,
+    widgetEnabled:
+      typeof s.widgetEnabled === "boolean"
+        ? s.widgetEnabled
+        : DEFAULT_SETTINGS.widgetEnabled,
   };
 }
 
