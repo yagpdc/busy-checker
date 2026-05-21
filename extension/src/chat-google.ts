@@ -127,7 +127,20 @@ function textColorFor(hex: string): string {
 }
 
 // === URL / title watcher ===
-let lastKey: string | null = null;
+//
+// State is keyed by URL pathname, not by title. Google Chat mutates
+// document.title a lot — unread counts, typing indicators, notifications
+// from other conversations all rewrite it. If we used the title as the
+// dedup key we'd tear down and remount the widget every few seconds (the
+// "flickering" the user reported). The pathname is the only stable signal
+// for "which conversation is open."
+let widgetPath: string | null = null;
+
+// Returns true only for 1:1 Direct Messages. Spaces / rooms / meeting
+// chats live at /space/ or /room/ URLs and never get the widget.
+function isDirectMessageUrl(path: string): boolean {
+  return /\/dm\//.test(path);
+}
 
 function currentConversationName(): string | null {
   // Observed title formats:
@@ -144,9 +157,12 @@ function currentConversationName(): string | null {
   if (/^(google\s+)?chat$/i.test(name)) return null;
   if (/^#/.test(name)) return null;
   if (/\b(people|membros|members|participantes)\b/i.test(name)) return null;
-  // Meeting-room/group chats look like "Atlas - 20 de mai." or "Standup #4".
-  // Real people don't have digits or the word "reunião" in their names — if
-  // the title contains either, treat it as a non-DM and skip the widget.
+  // Group DMs render as "Alice, Bob, Charlie - Chat" — comma → 3+ people,
+  // not a 1:1 we can answer "está livre?" about.
+  if (/,/.test(name)) return null;
+  // Meeting-room chats look like "Atlas - 20 de mai." or "Standup #4".
+  // Real people don't have digits or the word "reunião" in their names —
+  // belt-and-suspenders backup for the URL check.
   if (/\d/.test(name)) return null;
   if (/\b(reuni[aã]o|meeting)\b/i.test(name)) return null;
   return name;
@@ -160,17 +176,43 @@ function reactToState(): void {
   if (!widgetEnabled || !widgetOpen) {
     if (document.getElementById(WIDGET_ID)) {
       removeWidget();
-      lastKey = null;
+      widgetPath = null;
     }
     return;
   }
-  const name = currentConversationName();
-  const key = name ? `${location.pathname}::${name}` : null;
+
+  const path = location.pathname;
   const widgetExists = !!document.getElementById(WIDGET_ID);
-  if (key === lastKey && (key === null || widgetExists)) return;
-  lastKey = key;
+
+  // Not in a DM → no widget, period.
+  if (!isDirectMessageUrl(path)) {
+    if (widgetExists) {
+      removeWidget();
+      widgetPath = null;
+    }
+    return;
+  }
+
+  // Same DM URL and widget already mounted → leave it alone. This is the
+  // critical no-flicker path: it short-circuits on every tick even when
+  // the title is briefly mutated by unread-counter updates, notifications,
+  // or typing indicators in other conversations.
+  if (widgetPath === path && widgetExists) return;
+
+  // URL changed (or widget was torn down) — need to (re)mount. Read the
+  // title now to know whose calendar to query.
+  const name = currentConversationName();
+  if (!name) {
+    // Title hasn't settled yet (Chat sometimes shows "Google Chat"
+    // momentarily during route changes). Don't tear down what we have —
+    // wait for the next tick.
+    if (widgetExists && widgetPath === path) return;
+    return;
+  }
+
   removeWidget();
-  if (name) openWidget(name);
+  widgetPath = path;
+  openWidget(name);
 }
 
 // MutationObserver setup + initial trigger live at the BOTTOM of the
@@ -221,7 +263,7 @@ function openWidget(name: string): void {
 // re-mounts the widget on whichever Chat tab is open.
 async function closeWidgetForSession(): Promise<void> {
   widgetOpen = false;
-  lastKey = null;
+  widgetPath = null;
   removeWidget();
   try {
     await chrome.storage.session.set({ widgetOpen: false });
@@ -1713,8 +1755,24 @@ const WIDGET_HTML = `
 
 // Bootstrap — moved here so WIDGET_HTML is already initialized before
 // reactToState() can fire on a tab that already has a conversation open.
+//
+// We watch document.head (where <title> lives) instead of the whole
+// document. Watching the full subtree with characterData fired on every
+// keystroke in the chat input — even with the early-return in
+// reactToState this triggered visible flicker because typing rewrote a
+// lot of DOM around the message composer. The head subtree only mutates
+// when the title or other meta updates, which is exactly what we care
+// about for navigation cues.
 const obs = new MutationObserver(reactToState);
-obs.observe(document, { subtree: true, childList: true, characterData: true });
+obs.observe(document.head, {
+  subtree: true,
+  childList: true,
+  characterData: true,
+});
+// Some title rewrites happen via assigning to document.title rather than
+// mutating the existing <title> node — Chrome's MutationObserver covers
+// both, but History API pushes don't fire popstate, so the periodic
+// fallback below catches URL changes that slip past everything else.
 window.addEventListener("popstate", reactToState);
 
 // Seed both flags from storage before the first reactToState tick.
