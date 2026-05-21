@@ -58,3 +58,42 @@ export async function parseQuestion(
     return { targetEmail: null, targetHint: null };
   }
 }
+
+/**
+ * Answers a free-form Portuguese question about the target's availability,
+ * grounded in the facts JSON. Conversational, 1–3 sentences. Used only
+ * by the popup — the chat widget never reaches this.
+ */
+export async function answerQuestion(
+  question: string,
+  context: Record<string, unknown>,
+): Promise<string> {
+  const resp = await requireClient().chat.completions.create({
+    model: config.openai.model,
+    temperature: 0.4,
+    messages: [
+      {
+        role: "system",
+        content:
+          "Você é o Toki, um assistente de agenda. Responde em português do " +
+          "Brasil, em no máximo 3 frases curtas, de forma direta e " +
+          "conversacional. Use APENAS os fatos fornecidos no JSON de contexto " +
+          "— não invente nada. Horários estão em America/Sao_Paulo. Se a " +
+          "pergunta pede informação que não está no contexto (ex: pergunta " +
+          'sobre "depois de amanhã" mas só temos eventos das próximas 24h), ' +
+          "diga isso de forma educada. Use o nome do target (parte antes do " +
+          "@ no email) ao se referir à pessoa.",
+      },
+      {
+        role: "user",
+        content:
+          `Pergunta do usuário: ${question}\n\n` +
+          `Contexto (JSON):\n${JSON.stringify(context, null, 2)}`,
+      },
+    ],
+  });
+  return (
+    resp.choices[0]?.message?.content?.trim() ??
+    "Não consegui responder com os dados disponíveis."
+  );
+}

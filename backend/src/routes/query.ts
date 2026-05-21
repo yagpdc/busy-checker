@@ -8,9 +8,14 @@ import {
   meetingsTodayCount,
   nextFreeSlot,
 } from "../services/calendar.js";
+import type { CalendarEventLite } from "../services/calendar.js";
 import { findEmailInDirectory } from "../services/directory.js";
 import { emailForNameHint, presenceForEmail } from "../services/presence.js";
-import { openaiEnabled, parseQuestion } from "../services/openai.js";
+import {
+  answerQuestion,
+  openaiEnabled,
+  parseQuestion,
+} from "../services/openai.js";
 import {
   isOutsideWorkingHours,
   templateStatusReply,
@@ -117,10 +122,47 @@ router.post("/", requireSession, async (req, res) => {
     workingHours: { start: workStart, end: workEnd },
   };
 
-  // Reply text is always built from the template — it's deterministic and
-  // doesn't hallucinate times. OpenAI is reserved for parsing free-form
-  // questions in `parseQuestion` above.
-  const reply = templateStatusReply(facts);
+  // Reply: when the caller asked a free-form QUESTION (popup path) and
+  // OpenAI is configured, generate a conversational answer grounded in
+  // the facts + a wider event window (±24h). Otherwise fall back to the
+  // deterministic template.
+  let reply: string;
+  if (parse.data.question && openaiEnabled) {
+    const wideEvents: CalendarEventLite[] = await eventsAround(
+      asker,
+      targetEmail,
+      new Date(),
+      24 * 60 * 60 * 1000,
+    ).catch(() => [] as CalendarEventLite[]);
+    const aiContext = {
+      now: new Date().toISOString(),
+      target: targetEmail,
+      currentlyBusy: facts.meeting.busy
+        ? {
+            kind: facts.meeting.kind,
+            title: facts.meeting.title,
+            endsAt: facts.meeting.endsAt.toISOString(),
+          }
+        : false,
+      outsideWorkingHours: facts.outsideWorkingHours,
+      workingHours: facts.workingHours,
+      suggestedSlot: facts.suggestedSlot
+        ? {
+            start: facts.suggestedSlot.start.toISOString(),
+            end: facts.suggestedSlot.end.toISOString(),
+          }
+        : null,
+      events: wideEvents,
+    };
+    reply = await answerQuestion(parse.data.question, aiContext).catch(
+      (err) => {
+        console.error("answerQuestion failed", err);
+        return templateStatusReply(facts);
+      },
+    );
+  } else {
+    reply = templateStatusReply(facts);
+  }
 
   res.json({
     reply,
