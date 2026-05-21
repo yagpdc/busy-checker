@@ -170,6 +170,16 @@ function formatTimeParts(d: Date): { hour: string; minute: string } {
   return { hour, minute };
 }
 
+// Returns midnight (00:00) of the SP-local day AFTER `after`. Used as the
+// `after` cursor when navigating to the next day's first free slot.
+function nextSpDayMidnight(after: Date): Date {
+  const TZ_OFFSET_MS = -3 * 60 * 60 * 1000;
+  const local = new Date(after.getTime() + TZ_OFFSET_MS);
+  local.setUTCDate(local.getUTCDate() + 1);
+  local.setUTCHours(0, 0, 0, 0);
+  return new Date(local.getTime() - TZ_OFFSET_MS);
+}
+
 const DURATION_OPTIONS_MIN = [15, 30, 45, 60, 90, 120];
 
 async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
@@ -445,10 +455,14 @@ async function askBackend(name: string, shadow: ShadowRoot): Promise<void> {
       nextFetching = true;
       updateSideLabels();
       try {
+        // Day-based navigation: jump to midnight of the next SP day so the
+        // returned slot is the FIRST free window on a DIFFERENT day (skips
+        // any remaining slots on the current day).
+        const after = nextSpDayMidnight(currentSlot.start).toISOString();
         const res = await chrome.runtime.sendMessage({
           type: "nextSlot",
           targetEmail: facts.targetEmail,
-          after: currentSlot.end,
+          after,
         });
         if (res?.ok) {
           const { slot, eventsAround: nextEvents } = res.data as {
